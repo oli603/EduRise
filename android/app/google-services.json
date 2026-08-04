@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "935368980876",
+    "project_id": "edurise-9e5e6",
+    "storage_bucket": "edurise-9e5e6.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:935368980876:android:1f9080c940bf7c22cefea9",
+        "android_client_info": {
+          "package_name": "com.example.edurise"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBlGcF9EcnQPZNnsZMN1j6Uy4d_2pXHL7M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
