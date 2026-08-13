@@ -1,9 +1,54 @@
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'models/auth_result.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 class AuthService {
   final _firebaseAuth = FirebaseAuth.instance;
+  Future<AuthResult> signInWithGoogle() async {
+    try {
+      final googleUser = await GoogleSignIn.instance.authenticate();
+
+      final googleAuth = googleUser.authentication;
+
+      final idToken = googleAuth.idToken;
+
+      if (idToken == null) {
+        return AuthResult.failure("Unable to get Google authentication token.");
+      }
+
+      final credential = GoogleAuthProvider.credential(idToken: idToken);
+
+      await _firebaseAuth.signInWithCredential(credential);
+
+      return AuthResult.success();
+    } on FirebaseAuthException catch (e) {
+      switch (e.code) {
+        case 'account-exists-with-different-credential':
+          return AuthResult.failure(
+            "An account already exists with this email. "
+            "Please sign in with email first.",
+          );
+
+        case 'network-request-failed':
+          return AuthResult.failure(
+            "Network error. Please check your internet connection.",
+          );
+
+        case 'operation-not-allowed':
+          return AuthResult.failure(
+            "Google Sign-In is not enabled in Firebase.",
+          );
+
+        default:
+          return AuthResult.failure("Google Sign-In failed. Please try again.");
+      }
+    } catch (e) {
+      return AuthResult.failure(
+        "Unable to sign in with Google. Please try again.",
+      );
+    }
+  }
 
   Future<AuthResult> signInWithEmail({
     required String email,
@@ -68,7 +113,7 @@ class AuthService {
           return AuthResult.failure("Please enter a valid email.");
 
         default:
-          return AuthResult.failure("Unable to create your account.");
+          return AuthResult.failure("Firebase error: ${e.code} - ${e.message}");
       }
     } catch (_) {
       return AuthResult.failure("Unexpected error. Please try again.");

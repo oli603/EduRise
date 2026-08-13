@@ -7,6 +7,7 @@ import '../../../../core/widgets/edurise_text_field.dart';
 import '../../../../core/widgets/primary_button.dart';
 import '../../../../core/widgets/secondary_button.dart';
 import 'package:edurise/features/auth/data/auth_service.dart';
+import 'package:edurise/features/profile_setup/data/profile_service.dart';
 
 class LoginForm extends StatefulWidget {
   const LoginForm({super.key});
@@ -21,6 +22,7 @@ class _LoginFormState extends State<LoginForm> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final AuthService _authService = AuthService();
+  final ProfileService _profileService = ProfileService();
   bool _isLoading = false;
 
   bool _obscurePassword = true;
@@ -30,6 +32,48 @@ class _LoginFormState extends State<LoginForm> {
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  Future<void> _googleSignIn() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    final result = await _authService.signInWithGoogle();
+
+    if (!mounted) return;
+
+    setState(() {
+      _isLoading = false;
+    });
+
+    if (!result.isSuccess) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(result.message)));
+
+      return;
+    }
+
+    try {
+      final exists = await _profileService.profileExists();
+
+      if (!mounted) return;
+
+      if (exists) {
+        context.go('/home');
+      } else {
+        context.go('/profile-setup');
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Unable to check your profile. Please try again.'),
+        ),
+      );
+    }
   }
 
   Future<void> _login() async {
@@ -160,16 +204,9 @@ class _LoginFormState extends State<LoginForm> {
           const SizedBox(height: AppSpacing.xl),
 
           SecondaryButton(
-            text: "Continue with Google",
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text("Google Sign-In will be available soon."),
-                ),
-              );
-            },
+            text: _isLoading ? "Signing in..." : "Continue with Google",
+            onPressed: _isLoading ? null : _googleSignIn,
           ),
-
           const SizedBox(height: AppSpacing.xl),
 
           Row(

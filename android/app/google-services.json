@@ -12,7 +12,20 @@
           "package_name": "com.example.edurise"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "935368980876-8vb6gj7j7dcplq3mv2an2cmmobsl1utm.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.edurise",
+            "certificate_hash": "cde82ac356d56f801b19ba0e8dcbf8eea8e2937f"
+          }
+        },
+        {
+          "client_id": "935368980876-e77v60qedbufrhp0kj0ee0suaqujdmk1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBlGcF9EcnQPZNnsZMN1j6Uy4d_2pXHL7M"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "935368980876-e77v60qedbufrhp0kj0ee0suaqujdmk1.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "935368980876-49fg1ltqknpa8lsb8227o6e2stvr6osf.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.edurise"
+              }
+            }
+          ]
         }
       }
     }
