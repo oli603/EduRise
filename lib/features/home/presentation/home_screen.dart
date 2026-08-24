@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 
 import 'package:edurise/features/home/widgets/greeting_section.dart';
 import 'package:edurise/features/home/widgets/quick_access_section.dart';
-import 'package:go_router/go_router.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -24,49 +23,67 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-          future: _getStudentProfile(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
+    return SafeArea(
+      child: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        future: _getStudentProfile(),
 
-            if (snapshot.hasError) {
-              return const Center(child: Text('Unable to load your profile.'));
-            }
+        builder: (context, snapshot) {
+          // ==================================================
+          // LOADING
+          // ==================================================
 
-            if (!snapshot.hasData || !snapshot.data!.exists) {
-              return const Center(child: Text('Student profile not found.'));
-            }
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-            final data = snapshot.data!.data();
+          // ==================================================
+          // ERROR
+          // ==================================================
 
-            final studentName = data?['name'] as String? ?? 'Student';
+          if (snapshot.hasError) {
+            return const Center(child: Text('Unable to load your profile.'));
+          }
 
-            return Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  GreetingSection(studentName: studentName),
+          // ==================================================
+          // PROFILE NOT FOUND
+          // ==================================================
 
-                  const SizedBox(height: 30),
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      context.push('/admin/add-question');
-                    },
-                    icon: const Icon(Icons.admin_panel_settings),
-                    label: const Text('Admin: Add Question'),
-                  ),
+          if (!snapshot.hasData || !snapshot.data!.exists) {
+            return const Center(child: Text('Student profile not found.'));
+          }
 
-                  const QuickAccessSection(),
-                ],
-              ),
-            );
-          },
-        ),
+          // ==================================================
+          // STUDENT DATA
+          // ==================================================
+
+          final data = snapshot.data!.data();
+
+          final studentName = data?['name'] as String? ?? 'Student';
+
+          // ==================================================
+          // DASHBOARD
+          // ==================================================
+
+          return ListView(
+            padding: const EdgeInsets.all(24),
+
+            children: [
+              // ------------------------------------------------
+              // GREETING
+              // ------------------------------------------------
+              GreetingSection(studentName: studentName),
+
+              const SizedBox(height: 30),
+
+              // ------------------------------------------------
+              // QUICK ACCESS
+              // ------------------------------------------------
+              const QuickAccessSection(),
+
+              const SizedBox(height: 30),
+            ],
+          );
+        },
       ),
     );
   }

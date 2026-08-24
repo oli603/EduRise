@@ -41,4 +41,19 @@ class BookService {
 
     return BookUnit.fromMap(document.id, document.data()!);
   }
+
+  Future<bool> unitExists({
+    required String grade,
+    required String subject,
+    required int unitNumber,
+  }) async {
+    final snapshot = await _unitsCollection
+        .where('grade', isEqualTo: grade)
+        .where('subject', isEqualTo: subject)
+        .where('unitNumber', isEqualTo: unitNumber)
+        .limit(1)
+        .get();
+
+    return snapshot.docs.isNotEmpty;
+  }
 }

@@ -1,14 +1,10 @@
 class BookUnit {
   final String id;
-
   final String grade;
   final String subject;
-
   final int unitNumber;
   final String unitName;
-
-  final String content;
-
+  final String pdfUrl;
   final DateTime? createdAt;
 
   const BookUnit({
@@ -17,7 +13,7 @@ class BookUnit {
     required this.subject,
     required this.unitNumber,
     required this.unitName,
-    required this.content,
+    required this.pdfUrl,
     this.createdAt,
   });
 
@@ -28,7 +24,7 @@ class BookUnit {
       subject: data['subject'] as String? ?? '',
       unitNumber: data['unitNumber'] as int? ?? 0,
       unitName: data['unitName'] as String? ?? '',
-      content: data['content'] as String? ?? '',
+      pdfUrl: data['pdfUrl'] as String? ?? '',
       createdAt: (data['createdAt'] as dynamic)?.toDate(),
     );
   }
@@ -39,7 +35,7 @@ class BookUnit {
       'subject': subject,
       'unitNumber': unitNumber,
       'unitName': unitName,
-      'content': content,
+      'pdfUrl': pdfUrl,
       'createdAt': createdAt,
     };
   }

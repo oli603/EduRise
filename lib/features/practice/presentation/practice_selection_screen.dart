@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/theme/app_colors.dart';
-import '../../../core/theme/app_spacing.dart';
+import '../data/question_service.dart';
 
 class PracticeSelectionScreen extends StatefulWidget {
-  const PracticeSelectionScreen({super.key});
+  final String grade;
+  final String stream;
+
+  const PracticeSelectionScreen({
+    super.key,
+    required this.grade,
+    required this.stream,
+  });
 
   @override
   State<PracticeSelectionScreen> createState() =>
@@ -13,175 +19,286 @@ class PracticeSelectionScreen extends StatefulWidget {
 }
 
 class _PracticeSelectionScreenState extends State<PracticeSelectionScreen> {
-  String? _selectedGrade;
+  final QuestionService _questionService = QuestionService();
+
   String? _selectedSubject;
   int? _selectedUnitNumber;
   String? _selectedUnitName;
 
-  final List<String> _grades = ['Grade 9', 'Grade 10', 'Grade 11', 'Grade 12'];
+  int _questionCount = 10;
 
-  final List<String> _subjects = [
-    'Mathematics',
-    'Physics',
-    'Chemistry',
-    'Biology',
-  ];
+  List<Map<String, dynamic>> _units = [];
 
-  final Map<String, List<Map<String, dynamic>>> _units = {
-    'Mathematics': [
-      {'number': 1, 'name': 'Sets'},
-      {'number': 2, 'name': 'Functions'},
-      {'number': 3, 'name': 'Algebra'},
-    ],
-    'Physics': [
-      {'number': 1, 'name': 'Motion'},
-      {'number': 2, 'name': 'Forces'},
-    ],
-    'Chemistry': [
-      {'number': 1, 'name': 'Atomic Structure'},
-      {'number': 2, 'name': 'Chemical Bonding'},
-    ],
-    'Biology': [
-      {'number': 1, 'name': 'Cell Biology'},
-      {'number': 2, 'name': 'Genetics'},
-    ],
-  };
+  bool _isLoadingUnits = false;
+  String? _errorMessage;
 
-  void _selectSubject(String subject) {
+  // ------------------------------------------------------------
+  // SUBJECTS
+  // ------------------------------------------------------------
+
+  List<String> get _subjects {
+    if (widget.stream == 'Natural Science') {
+      return ['Mathematics', 'Physics', 'Chemistry', 'Biology'];
+    }
+
+    if (widget.stream == 'Social Science') {
+      return ['Mathematics', 'Economics', 'Geography', 'History'];
+    }
+
+    return [];
+  }
+
+  // ------------------------------------------------------------
+  // LOAD UNITS
+  // ------------------------------------------------------------
+
+  Future<void> _loadUnits(String subject) async {
     setState(() {
-      _selectedSubject = subject;
       _selectedUnitNumber = null;
       _selectedUnitName = null;
+      _units = [];
+      _isLoadingUnits = true;
+      _errorMessage = null;
     });
-  }
 
-  void _selectUnit(int unitNumber, String unitName) {
-    setState(() {
-      _selectedUnitNumber = unitNumber;
-      _selectedUnitName = unitName;
-    });
-  }
-
-  void _startPractice() {
-    if (_selectedGrade == null ||
-        _selectedSubject == null ||
-        _selectedUnitNumber == null ||
-        _selectedUnitName == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select grade, subject, and unit.'),
-        ),
+    try {
+      final units = await _questionService.getAvailableUnits(
+        grade: widget.grade,
+        stream: widget.stream,
+        subject: subject,
       );
 
+      if (!mounted) return;
+
+      setState(() {
+        _units = units;
+        _isLoadingUnits = false;
+      });
+    } catch (e) {
+      debugPrint('LOAD AVAILABLE UNITS ERROR: $e');
+
+      if (!mounted) return;
+
+      setState(() {
+        _isLoadingUnits = false;
+        _errorMessage = 'Unable to load units.';
+      });
+    }
+  }
+
+  // ------------------------------------------------------------
+  // START PRACTICE
+  // ------------------------------------------------------------
+
+  void _startPractice() {
+    if (_selectedSubject == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please select a subject.')));
+      return;
+    }
+
+    if (_selectedUnitNumber == null || _selectedUnitName == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please select a unit.')));
       return;
     }
 
     context.push(
-      '/practice'
-      '?grade=${Uri.encodeComponent(_selectedGrade!)}'
-      '&subject=${Uri.encodeComponent(_selectedSubject!)}'
-      '&unitNumber=$_selectedUnitNumber'
-      '&unitName=${Uri.encodeComponent(_selectedUnitName!)}',
+      '/practice',
+      extra: {
+        'grade': widget.grade,
+        'stream': widget.stream,
+        'subject': _selectedSubject!,
+        'unitNumber': _selectedUnitNumber!,
+        'unitName': _selectedUnitName!,
+        'questionCount': _questionCount,
+      },
     );
   }
 
+  // ------------------------------------------------------------
+  // BUILD
+  // ------------------------------------------------------------
+
   @override
   Widget build(BuildContext context) {
-    final availableUnits = _selectedSubject == null
-        ? <Map<String, dynamic>>[]
-        : _units[_selectedSubject!] ?? [];
-
     return Scaffold(
       appBar: AppBar(title: const Text('Practice')),
       body: ListView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(20),
         children: [
-          const Text(
+          // ------------------------------------------------------
+          // HEADER
+          // ------------------------------------------------------
+          Text(
             'Choose what you want to practice',
-            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            style: Theme.of(
+              context,
+            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
           ),
 
-          const SizedBox(height: AppSpacing.sm),
+          const SizedBox(height: 8),
 
           Text(
-            'Select your grade, subject, and unit.',
-            style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+            '${widget.grade} • ${widget.stream}',
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 15),
           ),
 
           const SizedBox(height: 30),
 
+          // ------------------------------------------------------
+          // SUBJECT
+          // ------------------------------------------------------
           const Text(
-            '1. Choose your grade',
-            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+            'Subject',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
 
-          ..._grades.map(
-            (grade) => _buildChoiceCard(
-              title: grade,
-              selected: _selectedGrade == grade,
-              onTap: () {
-                setState(() {
-                  _selectedGrade = grade;
-                });
-              },
+          DropdownButtonFormField<String>(
+            // ignore: deprecated_member_use
+            value: _selectedSubject,
+            decoration: InputDecoration(
+              hintText: 'Select subject',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
             ),
+            items: _subjects.map((subject) {
+              return DropdownMenuItem<String>(
+                value: subject,
+                child: Text(subject),
+              );
+            }).toList(),
+            onChanged: (value) {
+              if (value == null) return;
+
+              setState(() {
+                _selectedSubject = value;
+              });
+
+              _loadUnits(value);
+            },
           ),
 
           const SizedBox(height: 28),
 
+          // ------------------------------------------------------
+          // UNIT
+          // ------------------------------------------------------
           const Text(
-            '2. Choose your subject',
-            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+            'Unit',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
 
-          ..._subjects.map(
-            (subject) => _buildChoiceCard(
-              title: subject,
-              selected: _selectedSubject == subject,
-              onTap: () => _selectSubject(subject),
-            ),
-          ),
-
-          if (_selectedSubject != null) ...[
-            const SizedBox(height: 28),
-
-            const Text(
-              '3. Choose your unit',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-            ),
-
-            const SizedBox(height: 12),
-
-            ...availableUnits.map(
-              (unit) => _buildChoiceCard(
-                title: 'Unit ${unit['number']} — ${unit['name']}',
-                selected: _selectedUnitNumber == unit['number'],
-                onTap: () {
-                  _selectUnit(unit['number'] as int, unit['name'] as String);
-                },
+          if (_isLoadingUnits)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(20),
+                child: CircularProgressIndicator(),
               ),
-            ),
-          ],
-
-          const SizedBox(height: 32),
-
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _startPractice,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+            )
+          else if (_errorMessage != null)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Text(
+                _errorMessage!,
+                style: TextStyle(color: Colors.red.shade700),
+              ),
+            )
+          else
+            DropdownButtonFormField<int>(
+              // ignore: deprecated_member_use
+              value: _selectedUnitNumber,
+              decoration: InputDecoration(
+                hintText: _selectedSubject == null
+                    ? 'Select a subject first'
+                    : 'Select unit',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
                 ),
               ),
-              child: const Text(
+              items: _units.map((unit) {
+                final number = unit['number'] as int;
+                final name = unit['name'] as String;
+
+                return DropdownMenuItem<int>(
+                  value: number,
+                  child: Text('Unit $number - $name'),
+                );
+              }).toList(),
+              onChanged: _selectedSubject == null
+                  ? null
+                  : (value) {
+                      if (value == null) return;
+
+                      final selectedUnit = _units.firstWhere(
+                        (unit) => unit['number'] == value,
+                      );
+
+                      setState(() {
+                        _selectedUnitNumber = value;
+                        _selectedUnitName = selectedUnit['name'] as String;
+                      });
+                    },
+            ),
+
+          const SizedBox(height: 28),
+
+          // ------------------------------------------------------
+          // QUESTION COUNT
+          // ------------------------------------------------------
+          const Text(
+            'Number of questions',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          ),
+
+          const SizedBox(height: 10),
+
+          DropdownButtonFormField<int>(
+            // ignore: deprecated_member_use
+            value: _questionCount,
+            decoration: InputDecoration(
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            items: const [
+              DropdownMenuItem(value: 5, child: Text('5 Questions')),
+              DropdownMenuItem(value: 10, child: Text('10 Questions')),
+              DropdownMenuItem(value: 20, child: Text('20 Questions')),
+              DropdownMenuItem(value: 30, child: Text('30 Questions')),
+            ],
+            onChanged: (value) {
+              if (value == null) return;
+
+              setState(() {
+                _questionCount = value;
+              });
+            },
+          ),
+
+          const SizedBox(height: 40),
+
+          // ------------------------------------------------------
+          // START PRACTICE BUTTON
+          // ------------------------------------------------------
+          SizedBox(
+            height: 54,
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _startPractice,
+              icon: const Icon(Icons.play_arrow_rounded),
+              label: const Text(
                 'Start Practice',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
               ),
@@ -190,50 +307,6 @@ class _PracticeSelectionScreenState extends State<PracticeSelectionScreen> {
 
           const SizedBox(height: 20),
         ],
-      ),
-    );
-  }
-
-  Widget _buildChoiceCard({
-    required String title,
-    required bool selected,
-    required VoidCallback onTap,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: selected ? AppColors.primary : Colors.grey.shade100,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: selected ? AppColors.primary : Colors.grey.shade300,
-              ),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: selected ? Colors.white : Colors.black87,
-                    ),
-                  ),
-                ),
-                if (selected)
-                  const Icon(Icons.check_circle_rounded, color: Colors.white),
-              ],
-            ),
-          ),
-        ),
       ),
     );
   }

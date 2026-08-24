@@ -5,6 +5,11 @@ class ProfileService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  // ============================================================
+  // CHECK IF PROFILE EXISTS
+  // ============================================================
+
   Future<bool> profileExists() async {
     final user = _auth.currentUser;
 
@@ -19,6 +24,10 @@ class ProfileService {
 
     return document.exists;
   }
+
+  // ============================================================
+  // SAVE PROFILE
+  // ============================================================
 
   Future<void> saveProfile({
     required String name,

@@ -52,6 +52,9 @@ class QuickAccessSection extends StatelessWidget {
               icon: Icons.calendar_month_rounded,
               title: "Study Plan",
               subtitle: "Plan your study",
+              onTap: () {
+                context.push('/study-plan');
+              },
             ),
 
             _buildQuickAccessCard(
@@ -59,6 +62,9 @@ class QuickAccessSection extends StatelessWidget {
               icon: Icons.bar_chart_rounded,
               title: "Progress",
               subtitle: "See your growth",
+              onTap: () {
+                context.push('/progress');
+              },
             ),
 
             _buildQuickAccessCard(
@@ -66,6 +72,9 @@ class QuickAccessSection extends StatelessWidget {
               icon: Icons.emoji_events_rounded,
               title: "Challenges",
               subtitle: "Build your streak",
+              onTap: () {
+                context.push('/challenges');
+              },
             ),
 
             _buildQuickAccessCard(
@@ -73,6 +82,17 @@ class QuickAccessSection extends StatelessWidget {
               icon: Icons.auto_awesome_rounded,
               title: "AI Coach",
               subtitle: "Get guidance",
+            ),
+            _buildQuickAccessCard(
+              context,
+              icon: Icons.menu_book_rounded,
+              title: "Books",
+              subtitle: "Learn by unit",
+              onTap: () {
+                context.push(
+                  '/books?grade=${Uri.encodeComponent("Grade 12")}&subject=${Uri.encodeComponent("Mathematics")}',
+                );
+              },
             ),
           ],
         ),

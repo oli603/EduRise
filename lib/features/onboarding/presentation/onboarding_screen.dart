@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../../core/widgets/primary_button.dart';
 
 class OnboardingScreen extends StatefulWidget {
@@ -10,8 +11,9 @@ class OnboardingScreen extends StatefulWidget {
 }
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
-  bool isNaturalSelected = true;
-
+  String _selectedStream = "Natural Science";
+  bool isNaturalSelected = false;
+  bool isSocialSelected = false;
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -30,7 +32,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
               const SizedBox(height: 10),
 
-              const Text("Let's personalize your learning experience."),
+              const Text(
+                "Choose your stream to personalize "
+                "your learning experience.",
+              ),
 
               const SizedBox(height: 40),
 
@@ -41,10 +46,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       title: "Natural Science",
                       subjects:
                           "Math • Physics • Chemistry • Biology • SAT • English",
-                      selected: isNaturalSelected,
+                      selected: _selectedStream == "Natural Science",
                       onTap: () {
                         setState(() {
-                          isNaturalSelected = true;
+                          _selectedStream = "Natural Science";
                         });
                       },
                     ),
@@ -55,10 +60,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       title: "Social Science",
                       subjects:
                           "Math • History • Geography • Economics • SAT • English",
-                      selected: !isNaturalSelected,
+                      selected: _selectedStream == "Social Science",
                       onTap: () {
                         setState(() {
-                          isNaturalSelected = false;
+                          _selectedStream = "Social Science";
                         });
                       },
                     ),
@@ -71,7 +76,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 child: PrimaryButton(
                   text: "Continue",
                   onPressed: () {
-                    context.go('/auth');
+                    context.go(
+                      '/auth?stream=${Uri.encodeComponent(isNaturalSelected ? 'Natural Science' : 'Social Science')}',
+                    );
                   },
                 ),
               ),
@@ -92,6 +99,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 250),
+        width: double.infinity,
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: selected ? Colors.blue : Colors.grey.shade200,

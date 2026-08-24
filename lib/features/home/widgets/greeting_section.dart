@@ -17,7 +17,7 @@ class GreetingSection extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text("Good Morning 👋", style: AppTextStyles.body),
+              Text("Hey 👋", style: AppTextStyles.body),
 
               const SizedBox(height: AppSpacing.xs),
 
