@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../past_entrance_exams/data/past_exam_service.dart';
 import '../data/question_service.dart';
 
 class PracticeSelectionScreen extends StatefulWidget {
@@ -20,6 +21,12 @@ class PracticeSelectionScreen extends StatefulWidget {
 
 class _PracticeSelectionScreenState extends State<PracticeSelectionScreen> {
   final QuestionService _questionService = QuestionService();
+  final PastExamService _pastExamService = PastExamService();
+
+  late String _grade;
+  late String _stream;
+  bool _isLoadingAcademicInfo = false;
+  String? _academicInfoError;
 
   String? _selectedSubject;
   int? _selectedUnitNumber;
@@ -32,16 +39,56 @@ class _PracticeSelectionScreenState extends State<PracticeSelectionScreen> {
   bool _isLoadingUnits = false;
   String? _errorMessage;
 
+  @override
+  void initState() {
+    super.initState();
+
+    _grade = widget.grade;
+    _stream = widget.stream;
+
+    if (_grade.isEmpty || _stream.isEmpty) {
+      _loadStudentAcademicInfo();
+    }
+  }
+
+  Future<void> _loadStudentAcademicInfo() async {
+    setState(() {
+      _isLoadingAcademicInfo = true;
+      _academicInfoError = null;
+    });
+
+    try {
+      final academicInfo = await _pastExamService.getStudentAcademicInfo();
+
+      if (!mounted) return;
+
+      setState(() {
+        _grade = _grade.isEmpty ? academicInfo['grade']! : _grade;
+        _stream = _stream.isEmpty ? academicInfo['stream']! : _stream;
+        _isLoadingAcademicInfo = false;
+      });
+    } catch (e) {
+      debugPrint('LOAD STUDENT ACADEMIC INFO ERROR: $e');
+
+      if (!mounted) return;
+
+      setState(() {
+        _isLoadingAcademicInfo = false;
+        _academicInfoError = 'Unable to load your academic information.';
+      });
+    }
+  }
+
   // ------------------------------------------------------------
   // SUBJECTS
   // ------------------------------------------------------------
 
   List<String> get _subjects {
-    if (widget.stream == 'Natural Science') {
+    if (_stream == 'Natural Science') {
       return ['Mathematics', 'Physics', 'Chemistry', 'Biology'];
     }
 
-    if (widget.stream == 'Social Science') {
+    if (_stream == 'Social Science') {
       return ['Mathematics', 'Economics', 'Geography', 'History'];
     }
 
@@ -63,8 +110,8 @@ class _PracticeSelectionScreenState extends State<PracticeSelectionScreen> {
 
     try {
       final units = await _questionService.getAvailableUnits(
-        grade: widget.grade,
-        stream: widget.stream,
+        grade: _grade,
+        stream: _stream,
         subject: subject,
       );
 
@@ -142,8 +189,17 @@ class _PracticeSelectionScreenState extends State<PracticeSelectionScreen> {
           const SizedBox(height: 8),
 
           Text(
-            '${widget.grade} • ${widget.stream}',
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 15),
+            _isLoadingAcademicInfo
+                ? 'Loading academic information…'
+                : _academicInfoError != null
+                ? _academicInfoError!
+                : '$_grade • $_stream',
+            style: TextStyle(
+              color: _academicInfoError != null
+                  ? Colors.red.shade700
+                  : Colors.grey.shade600,
+              fontSize: 15,
+            ),
           ),
 
           const SizedBox(height: 30),
@@ -160,7 +216,9 @@ class _PracticeSelectionScreenState extends State<PracticeSelectionScreen> {
 
           DropdownButtonFormField<String>(
             // ignore: deprecated_member_use
-            value: _selectedSubject,
+            value: _subjects.contains(_selectedSubject)
+                ? _selectedSubject
+                : null,
             decoration: InputDecoration(
               hintText: 'Select subject',
               border: OutlineInputBorder(
@@ -173,15 +231,17 @@ class _PracticeSelectionScreenState extends State<PracticeSelectionScreen> {
                 child: Text(subject),
               );
             }).toList(),
-            onChanged: (value) {
-              if (value == null) return;
+            onChanged: _isLoadingAcademicInfo || _academicInfoError != null
+                ? null
+                : (value) {
+                    if (value == null) return;
 
-              setState(() {
-                _selectedSubject = value;
-              });
+                    setState(() {
+                      _selectedSubject = value;
+                    });
 
-              _loadUnits(value);
-            },
+                    _loadUnits(value);
+                  },
           ),
 
           const SizedBox(height: 28),
