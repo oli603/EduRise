@@ -1,0 +1,163 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ============================================================
+    // HELPER FUNCTIONS
+    // ============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isFounder() {
+      return isAuthenticated() && (
+        request.auth.token.email.lower() == 'olanamengistu2@gmail.com' ||
+        (exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'founder' &&
+         get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.isActive == true)
+      );
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email.lower() == 'tamiratboja@gmail.com' ||
+        (exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.isActive == true)
+      );
+    }
+
+    function isAuthorizedAdmin() {
+      return isFounder() || isAdmin();
+    }
+
+    // ============================================================
+    // ADMINS COLLECTION (FOUNDER ONLY MANAGEMENT)
+    // ============================================================
+    match /admins/{adminId} {
+      allow read: if isAuthorizedAdmin();
+      allow create, update, delete: if isFounder();
+    }
+
+    // ============================================================
+    // STUDENTS COLLECTION
+    // Student can only read/update own document.
+    // Student CANNOT modify payment status, role, or access fields.
+    // ============================================================
+    match /students/{studentId} {
+      allow read: if isAuthenticated() && (request.auth.uid == studentId || isAuthorizedAdmin());
+      allow create: if isAuthenticated() && request.auth.uid == studentId
+                    && !('isPaid' in request.resource.data)
+                    && !('accessStatus' in request.resource.data)
+                    && !('role' in request.resource.data);
+      allow update: if isAuthorizedAdmin() || (
+        isAuthenticated() && request.auth.uid == studentId
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isPaid', 'accessStatus', 'role', 'paidUntil', 'approvedBy'])
+      );
+      allow delete: if isAuthorizedAdmin();
+    }
+
+    // ============================================================
+    // PAYMENT SUBMISSIONS (CRITICAL ACCESS CONTROL)
+    // Student creates with status == 'pending'.
+    // Student CANNOT approve/reject or modify status.
+    // ============================================================
+    match /payment_submissions/{submissionId} {
+      allow read: if isAuthenticated() && (
+        resource.data.studentId == request.auth.uid || isAuthorizedAdmin()
+      );
+      allow create: if isAuthenticated() &&
+                    request.resource.data.studentId == request.auth.uid &&
+                    request.resource.data.status == 'pending';
+      allow update: if isAuthorizedAdmin();
+      allow delete: if isFounder();
+    }
+
+    // ============================================================
+    // AUDIT LOGS (IMMUTABLE)
+    // ============================================================
+    match /audit_logs/{logId} {
+      allow read: if isAuthorizedAdmin();
+      allow create: if isAuthorizedAdmin();
+      allow update, delete: if false; // Immutable audit trail
+    }
+
+    // ============================================================
+    // NOTIFICATIONS
+    // ============================================================
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.userId == 'all' ||
+        isAuthorizedAdmin()
+      );
+      allow create: if isAuthorizedAdmin();
+      allow update: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid || resource.data.userId == 'all'
+      ) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead']);
+      allow delete: if isAuthorizedAdmin();
+    }
+
+    // ============================================================
+    // CONTENT: QUESTIONS, PACKAGES, BOOKS, PAST EXAMS
+    // ============================================================
+    match /questions/{questionId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthorizedAdmin();
+    }
+
+    match /question_packages/{packageId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthorizedAdmin();
+
+      match /questions/{qId} {
+        allow read: if isAuthenticated();
+        allow write: if isAuthorizedAdmin();
+      }
+    }
+
+    match /book_units/{unitId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthorizedAdmin();
+    }
+
+    match /past_exams/{examId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthorizedAdmin();
+    }
+
+    match /past_exam_questions/{questionId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthorizedAdmin();
+    }
+
+    // ============================================================
+    // STUDENT PRACTICE RESULTS & STUDY TASKS
+    // ============================================================
+    match /practice_results/{resultId} {
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid || isAuthorizedAdmin()
+      );
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAuthorizedAdmin();
+    }
+
+    match /study_tasks/{taskId} {
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid || isAuthorizedAdmin()
+      );
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid || isAuthorizedAdmin()
+      );
+    }
+
+    // ============================================================
+    // SYSTEM SETTINGS
+    // ============================================================
+    match /system_settings/{settingId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthorizedAdmin();
+    }
+  }
+}

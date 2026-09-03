@@ -13,9 +13,11 @@ import 'package:edurise/features/auth/presentation/welcome_screen.dart';
 import 'package:edurise/features/onboarding/presentation/onboarding_screen.dart';
 import 'package:edurise/features/splash/presentation/splash_screen.dart';
 
-// Profile
+// Profile / Settings / About
 import 'package:edurise/features/profile_setup/presentation/profile_setup_screen.dart';
 import 'package:edurise/features/profile/presentation/profile_screen.dart';
+import 'package:edurise/features/settings/presentation/settings_screen.dart';
+import 'package:edurise/features/about/presentation/about_screen.dart';
 // Student features
 import 'package:edurise/features/home/presentation/home_screen.dart';
 import 'package:edurise/features/practice/presentation/practice_screen.dart';
@@ -44,9 +46,29 @@ import 'package:edurise/features/admin/presentation/past_exam_question_editor_sc
 import 'package:edurise/features/challenges/presentation/add_challenge_screen.dart';
 import 'package:edurise/features/past_entrance_exams/presentation/exam_instructions_screen.dart';
 
+// Admin / Payments / Notifications
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:edurise/features/admin/data/admin_service.dart';
+import 'package:edurise/features/admin/presentation/admin_dashboard_screen.dart';
+import 'package:edurise/features/payment/presentation/submit_payment_screen.dart';
+import 'package:edurise/features/notifications/presentation/notifications_screen.dart';
+
 class AppRouter {
   static final router = GoRouter(
     initialLocation: '/',
+    redirect: (context, state) {
+      final path = state.matchedLocation;
+      if (path.startsWith('/admin')) {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user == null) {
+          return '/login';
+        }
+        if (!AdminService.isAuthorizedAdmin) {
+          return '/home';
+        }
+      }
+      return null;
+    },
 
     routes: [
       // ==========================================================
@@ -178,21 +200,25 @@ class AppRouter {
       GoRoute(
         path: '/practice',
         builder: (context, state) {
-          final grade = state.uri.queryParameters['grade'] ?? '';
+          final extra = state.extra is Map<String, dynamic>
+              ? state.extra as Map<String, dynamic>
+              : const <String, dynamic>{};
 
-          final stream = state.uri.queryParameters['stream'] ?? '';
-
-          final subject = state.uri.queryParameters['subject'] ?? '';
-
+          final grade =
+              (extra['grade'] as String?) ?? state.uri.queryParameters['grade'] ?? '';
+          final stream =
+              (extra['stream'] as String?) ?? state.uri.queryParameters['stream'] ?? '';
+          final subject =
+              (extra['subject'] as String?) ?? state.uri.queryParameters['subject'] ?? '';
           final unitNumber =
-              int.tryParse(state.uri.queryParameters['unitNumber'] ?? '') ?? 0;
-
-          final unitName = state.uri.queryParameters['unitName'] ?? '';
-
+              (extra['unitNumber'] as int?) ??
+              int.tryParse(state.uri.queryParameters['unitNumber'] ?? '') ??
+              0;
+          final unitName =
+              (extra['unitName'] as String?) ?? state.uri.queryParameters['unitName'] ?? '';
           final questionCount =
-              int.tryParse(
-                state.uri.queryParameters['questionCount'] ?? '10',
-              ) ??
+              (extra['questionCount'] as int?) ??
+              int.tryParse(state.uri.queryParameters['questionCount'] ?? '10') ??
               10;
 
           return PracticeScreen(
@@ -264,8 +290,44 @@ class AppRouter {
       ),
 
       // ==========================================================
+      // SETTINGS & ABOUT ROUTES
+      // ==========================================================
+      GoRoute(
+        path: '/settings',
+        builder: (context, state) => const SettingsScreen(),
+      ),
+
+      GoRoute(
+        path: '/about',
+        builder: (context, state) => const AboutEduRiseScreen(),
+      ),
+
+      // ==========================================================
+      // PAYMENT & NOTIFICATION ROUTES
+      // ==========================================================
+      GoRoute(
+        path: '/payment/submit',
+        builder: (context, state) => const SubmitPaymentScreen(),
+      ),
+
+      GoRoute(
+        path: '/notifications',
+        builder: (context, state) => const NotificationsScreen(),
+      ),
+
+      // ==========================================================
       // ADMIN ROUTES
       // ==========================================================
+      GoRoute(
+        path: '/admin',
+        builder: (context, state) => const AdminDashboardScreen(),
+      ),
+
+      GoRoute(
+        path: '/admin/dashboard',
+        builder: (context, state) => const AdminDashboardScreen(),
+      ),
+
       GoRoute(
         path: '/admin/add-question',
         builder: (context, state) {

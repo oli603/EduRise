@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/auth/access_service.dart';
+import '../../../core/widgets/access_locked_dialog.dart';
 import '../data/book_model.dart';
 import '../data/book_service.dart';
 import 'unit_content_screen.dart';
@@ -45,7 +47,15 @@ class BooksScreen extends StatelessWidget {
 
               return _UnitCard(
                 unit: unit,
-                onTap: () {
+                onTap: () async {
+                  final hasAccess = await AccessService.hasPaidAccess();
+                  if (!hasAccess) {
+                    if (!context.mounted) return;
+                    AccessLockedDialog.show(context, featureName: 'Book Units');
+                    return;
+                  }
+
+                  if (!context.mounted) return;
                   Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => UnitContentScreen(unit: unit),

@@ -33,6 +33,28 @@ class QuestionService {
   }
 
   // ============================================================
+  // GET AVAILABLE GRADES
+  // ============================================================
+
+  Future<List<String>> getAvailableGrades({required String stream}) async {
+    final snapshot = await _questionsCollection
+        .where('stream', isEqualTo: stream)
+        .where('status', isEqualTo: 'published')
+        .get();
+
+    final grades = <String>{};
+    for (final document in snapshot.docs) {
+      final grade = document.data()['grade'] as String?;
+      if (grade != null && grade.isNotEmpty) {
+        grades.add(grade);
+      }
+    }
+
+    final result = grades.toList()..sort();
+    return result;
+  }
+
+  // ============================================================
   // GET AVAILABLE UNITS
   // ============================================================
 

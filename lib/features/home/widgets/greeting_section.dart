@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
@@ -39,7 +40,7 @@ class GreetingSection extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
           ),
           child: IconButton(
-            onPressed: () {},
+            onPressed: () => context.push('/notifications'),
             icon: const Icon(
               Icons.notifications_none_rounded,
               color: AppColors.primary,

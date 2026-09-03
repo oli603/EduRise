@@ -1,6 +1,8 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/admin/data/admin_service.dart';
 import 'app_navigation.dart';
 
 class AppShell extends StatelessWidget {
@@ -83,16 +85,38 @@ class AppShell extends StatelessWidget {
             const Divider(),
 
             // ==================================================
+            // ADMIN ACCESS (AUTHORIZED ADMIN / FOUNDER ONLY)
+            // ==================================================
+            if (AdminService.isAuthorizedAdmin) ...[
+              ListTile(
+                leading: const Icon(Icons.admin_panel_settings_rounded, color: Colors.indigo),
+                title: const Text(
+                  'Admin Dashboard',
+                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo),
+                ),
+                trailing: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.indigo.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.indigo.shade200),
+                  ),
+                  child: const Text(
+                    'ADMIN',
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.indigo),
+                  ),
+                ),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  context.push('/admin');
+                },
+              ),
+              const Divider(),
+            ],
+
+            // ==================================================
             // MAIN NAVIGATION
             // ==================================================
-            ListTile(
-              leading: const Icon(Icons.history_edu_outlined),
-              title: const Text('Past Entrance Exams'),
-              onTap: () {
-                Navigator.of(context).pop();
-                context.push('/admin/past-exams/upload');
-              },
-            ),
             ListTile(
               leading: const Icon(Icons.home_outlined),
               title: const Text('Home'),
@@ -120,6 +144,15 @@ class AppShell extends StatelessWidget {
                 Navigator.of(context).pop();
 
                 context.push('/study-plan');
+              },
+            ),
+
+            ListTile(
+              leading: const Icon(Icons.receipt_long_outlined),
+              title: const Text('Subscription / Payment'),
+              onTap: () {
+                Navigator.of(context).pop();
+                context.push('/payment/submit');
               },
             ),
 
@@ -178,12 +211,7 @@ class AppShell extends StatelessWidget {
               title: const Text('Settings'),
               onTap: () {
                 Navigator.of(context).pop();
-
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Settings will be available soon.'),
-                  ),
-                );
+                context.push('/settings');
               },
             ),
 
@@ -195,12 +223,7 @@ class AppShell extends StatelessWidget {
               title: const Text('About EduRise'),
               onTap: () {
                 Navigator.of(context).pop();
-
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('About EduRise will be available soon.'),
-                  ),
-                );
+                context.push('/about');
               },
             ),
 
@@ -212,10 +235,12 @@ class AppShell extends StatelessWidget {
             ListTile(
               leading: const Icon(Icons.logout_rounded),
               title: const Text('Sign Out'),
-              onTap: () {
+              onTap: () async {
                 Navigator.of(context).pop();
-
-                context.go('/login');
+                await FirebaseAuth.instance.signOut();
+                if (context.mounted) {
+                  context.go('/login');
+                }
               },
             ),
           ],

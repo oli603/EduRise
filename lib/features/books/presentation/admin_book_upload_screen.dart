@@ -1,8 +1,11 @@
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 
+import '../data/book_model.dart';
+import '../data/book_service.dart';
 import '../data/book_upload_item.dart';
 
 class AdminBookUploadScreen extends StatefulWidget {
@@ -13,10 +16,16 @@ class AdminBookUploadScreen extends StatefulWidget {
 }
 
 class _AdminBookUploadScreenState extends State<AdminBookUploadScreen> {
+  final BookService _bookService = BookService();
+  final FirebaseStorage _storage = FirebaseStorage.instance;
+
   String? selectedGrade;
   String? selectedSubject;
 
   final List<BookUploadItem> _uploadQueue = [];
+  bool _isUploading = false;
+  double _uploadProgress = 0.0;
+  String _uploadStatusMessage = '';
 
   final List<String> grades = ['Grade 9', 'Grade 10', 'Grade 11', 'Grade 12'];
 
@@ -302,34 +311,72 @@ class _AdminBookUploadScreenState extends State<AdminBookUploadScreen> {
       return;
     }
 
-    /*
-      ============================================================
-      FIREBASE STORAGE WILL BE CONNECTED HERE
-      ============================================================
+    setState(() {
+      _isUploading = true;
+      _uploadProgress = 0.0;
+      _uploadStatusMessage = 'Starting upload...';
+    });
 
-      Later:
+    try {
+      int completed = 0;
+      final total = _uploadQueue.length;
 
       for (final item in _uploadQueue) {
+        setState(() {
+          _uploadStatusMessage =
+              'Uploading Unit ${item.unitNumber} (${completed + 1}/$total)...';
+        });
 
-        1. Upload item.pdfFile to Firebase Storage
+        // 1. Upload to Firebase Storage
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        final cleanGrade = selectedGrade!.replaceAll(' ', '_');
+        final storagePath =
+            'book_pdfs/${cleanGrade}_${selectedSubject}_unit_${item.unitNumber}_$timestamp.pdf';
 
-        2. Get download URL
+        final ref = _storage.ref().child(storagePath);
+        final uploadTask = await ref.putFile(
+          item.pdfFile,
+          SettableMetadata(contentType: 'application/pdf'),
+        );
 
-        3. Create BookUnit:
-           grade
-           subject
-           unitNumber
-           unitName
-           pdfUrl
-           createdAt
+        final downloadUrl = await uploadTask.ref.getDownloadURL();
 
-        4. Save BookUnit to Firestore
+        // 2. Save BookUnit to Firestore
+        final bookUnit = BookUnit(
+          id: '',
+          grade: selectedGrade!,
+          subject: selectedSubject!,
+          unitNumber: item.unitNumber,
+          unitName: item.unitName,
+          pdfUrl: downloadUrl,
+        );
+
+        await _bookService.addUnit(bookUnit);
+
+        completed++;
+        setState(() {
+          _uploadProgress = completed / total;
+        });
       }
 
-      We are intentionally keeping this separate from the UI.
-    */
+      if (!mounted) return;
 
-    _showMessage('${_uploadQueue.length} unit(s) ready for Firebase upload.');
+      _showMessage('All $total unit(s) uploaded successfully! 🎉');
+
+      setState(() {
+        _uploadQueue.clear();
+        _isUploading = false;
+      });
+
+      Navigator.of(context).pop();
+    } catch (e) {
+      debugPrint('UPLOAD ERROR: $e');
+      if (!mounted) return;
+      _showMessage('Upload failed: ${e.toString()}');
+      setState(() {
+        _isUploading = false;
+      });
+    }
   }
 
   // ============================================================
@@ -637,16 +684,37 @@ class _AdminBookUploadScreenState extends State<AdminBookUploadScreen> {
 
               const SizedBox(height: 12),
 
+              if (_isUploading) ...[
+                const SizedBox(height: 12),
+                LinearProgressIndicator(value: _uploadProgress),
+                const SizedBox(height: 8),
+                Text(
+                  _uploadStatusMessage,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                ),
+                const SizedBox(height: 12),
+              ],
+
               // SUBMIT BUTTON
               SizedBox(
                 height: 54,
                 width: double.infinity,
                 child: FilledButton.icon(
-                  onPressed: _submitAll,
-                  icon: const Icon(Icons.cloud_upload_outlined),
-                  label: const Text(
-                    'SUBMIT ALL UNITS',
-                    style: TextStyle(fontWeight: FontWeight.bold),
+                  onPressed: _isUploading ? null : _submitAll,
+                  icon: _isUploading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.cloud_upload_outlined),
+                  label: Text(
+                    _isUploading ? 'UPLOADING UNITS...' : 'SUBMIT ALL UNITS',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                 ),
               ),

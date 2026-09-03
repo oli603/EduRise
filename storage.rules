@@ -1,0 +1,38 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAuthorizedAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email.lower() in ['olanamengistu2@gmail.com', 'tamiratboja@gmail.com']
+      );
+    }
+
+    // Payment proof screenshots/receipts uploaded by students
+    // Only the student owner and authorized admins can read
+    // Only the student owner can upload to their own path
+    match /payment_proofs/{studentId}/{fileName} {
+      allow write: if isAuthenticated() && request.auth.uid == studentId;
+      allow read: if isAuthenticated() && (request.auth.uid == studentId || isAuthorizedAdmin());
+      allow delete: if isAuthorizedAdmin();
+    }
+
+    // Book PDFs uploaded by admin
+    match /book_pdfs/{fileName} {
+      allow write: if isAuthorizedAdmin();
+      allow read: if isAuthenticated();
+      allow delete: if isAuthorizedAdmin();
+    }
+
+    // Question images
+    match /question_images/{fileName} {
+      allow write: if isAuthorizedAdmin();
+      allow read: if isAuthenticated();
+      allow delete: if isAuthorizedAdmin();
+    }
+  }
+}
