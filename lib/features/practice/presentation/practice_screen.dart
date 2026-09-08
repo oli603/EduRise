@@ -1,8 +1,12 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import 'package:edurise/core/auth/access_service.dart';
+import 'package:edurise/core/widgets/access_locked_dialog.dart';
 import 'package:edurise/features/practice/data/question_model.dart';
 import 'package:edurise/features/practice/data/question_service.dart';
 import 'package:edurise/features/practice/data/practice_service.dart';
+import '../../challenges/data/challenge_service.dart';
 
 import 'practice_result_screen.dart';
 
@@ -12,6 +16,7 @@ class PracticeScreen extends StatefulWidget {
   final String subject;
   final int unitNumber;
   final String unitName;
+  final int? examYear;
   final int questionCount;
 
   const PracticeScreen({
@@ -21,6 +26,7 @@ class PracticeScreen extends StatefulWidget {
     required this.subject,
     required this.unitNumber,
     required this.unitName,
+    this.examYear,
     required this.questionCount,
   });
 
@@ -58,20 +64,60 @@ class _PracticeScreenState extends State<PracticeScreen> {
   // ============================================================
 
   Future<void> _loadQuestions() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+      _questions = [];
+      _currentIndex = 0;
+      _correctAnswers = 0;
+      _selectedAnswers.clear();
+      _mistakes.clear();
+      _answered = false;
+      _isCompletingPractice = false;
+    });
+
     try {
+      final canAccess = await AccessService.canAccessPractice(
+        grade: widget.grade,
+        examYear: widget.examYear ?? 0,
+      );
+
+      if (!canAccess) {
+        if (!mounted) return;
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Access Locked: Subscription required for ${widget.grade}.';
+        });
+        AccessLockedDialog.show(
+          context,
+          featureName: 'Practice Questions (${widget.grade} • ${widget.examYear ?? ''} EC)',
+        );
+        return;
+      }
+
       final questions = await _questionService.getQuestions(
         grade: widget.grade,
         stream: widget.stream,
         subject: widget.subject,
         unitNumber: widget.unitNumber,
+        examYear: widget.examYear,
       );
 
-      questions.shuffle();
+      // Deduplicate questions by ID
+      final seenIds = <String>{};
+      final uniqueQuestions = <Question>[];
+      for (final q in questions) {
+        if (seenIds.add(q.id)) {
+          uniqueQuestions.add(q);
+        }
+      }
+
+      uniqueQuestions.shuffle();
 
       final selectedQuestions =
-          widget.questionCount == 0 || widget.questionCount >= questions.length
-          ? questions
-          : questions.take(widget.questionCount).toList();
+          widget.questionCount == 0 || widget.questionCount >= uniqueQuestions.length
+          ? uniqueQuestions
+          : uniqueQuestions.take(widget.questionCount).toList();
 
       if (!mounted) return;
 
@@ -152,9 +198,25 @@ class _PracticeScreenState extends State<PracticeScreen> {
 
     final wrongAnswers = total - _correctAnswers;
 
+    final actualUnitName = (_questions.isNotEmpty && _questions.first.unitName.trim().isNotEmpty)
+        ? _questions.first.unitName.trim()
+        : (widget.unitName.trim().isNotEmpty ? widget.unitName.trim() : 'Unit ${widget.unitNumber}');
+
     // ============================================================
     // SAVE PRACTICE SESSION RESULT
     // ============================================================
+
+    final questionIds = _questions.map((q) => q.id).toList();
+    final correctQuestionIds = _questions
+        .where((q) => !_mistakes.contains(q))
+        .map((q) => q.id)
+        .toList();
+    final questionResults = _questions.map((q) {
+      return {
+        'questionId': q.id,
+        'isCorrect': !_mistakes.contains(q),
+      };
+    }).toList();
 
     try {
       await _practiceService.saveResult(
@@ -162,12 +224,28 @@ class _PracticeScreenState extends State<PracticeScreen> {
         stream: widget.stream,
         subject: widget.subject,
         unitNumber: widget.unitNumber,
-        unitName: widget.unitName,
+        unitName: actualUnitName,
+        examYear: widget.examYear,
         totalQuestions: total,
         correctAnswers: _correctAnswers,
         wrongAnswers: wrongAnswers,
         score: percentage,
+        questionIds: questionIds,
+        correctQuestionIds: correctQuestionIds,
+        questionResults: questionResults,
       );
+
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        final challengeService = ChallengeService();
+        await challengeService.incrementPracticeChallenge(
+          userId: user.uid,
+          subject: widget.subject,
+          grade: widget.grade,
+          unitNumber: widget.unitNumber,
+          count: total,
+        );
+      }
     } catch (e) {
       debugPrint('PRACTICE RESULT SAVE ERROR: $e');
     }
@@ -186,7 +264,9 @@ class _PracticeScreenState extends State<PracticeScreen> {
           grade: widget.grade,
           subject: widget.subject,
           unitNumber: widget.unitNumber,
-          unitName: widget.unitName,
+          unitName: actualUnitName,
+          examYear: widget.examYear,
+          questionCount: widget.questionCount,
           percentage: percentage,
         ),
       ),
@@ -220,7 +300,20 @@ class _PracticeScreenState extends State<PracticeScreen> {
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
-            child: Text(_errorMessage!, textAlign: TextAlign.center),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.error_outline_rounded, size: 54, color: Colors.red),
+                const SizedBox(height: 16),
+                Text(_errorMessage!, textAlign: TextAlign.center),
+                const SizedBox(height: 20),
+                FilledButton.icon(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.arrow_back_rounded),
+                  label: const Text('Go Back'),
+                ),
+              ],
+            ),
           ),
         ),
       );
@@ -233,12 +326,37 @@ class _PracticeScreenState extends State<PracticeScreen> {
     if (_questions.isEmpty) {
       return Scaffold(
         appBar: AppBar(title: Text(widget.unitName)),
-        body: const Center(
+        body: Center(
           child: Padding(
-            padding: EdgeInsets.all(24),
-            child: Text(
-              'No questions are available for this unit yet.',
-              textAlign: TextAlign.center,
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.search_off_rounded,
+                  size: 64,
+                  color: Colors.grey,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'No questions available',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'No questions are currently available for ${widget.grade} ${widget.subject} Unit ${widget.unitNumber}${widget.examYear != null && widget.examYear! > 0 ? ' (${widget.examYear} EC)' : ''}.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey.shade600, height: 1.4),
+                ),
+                const SizedBox(height: 24),
+                FilledButton.icon(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.arrow_back_rounded),
+                  label: const Text('Choose Another Filter'),
+                ),
+              ],
             ),
           ),
         ),
@@ -346,17 +464,42 @@ class _PracticeScreenState extends State<PracticeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Grade
-          Text(
-            widget.grade,
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              color: Theme.of(
-                context,
-                // ignore: deprecated_member_use
-              ).colorScheme.onPrimaryContainer.withOpacity(0.75),
-            ),
+          // Grade & Exam Year
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                widget.grade,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(
+                    context,
+                    // ignore: deprecated_member_use
+                  ).colorScheme.onPrimaryContainer.withOpacity(0.75),
+                ),
+              ),
+              if (widget.examYear != null && widget.examYear! > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    // ignore: deprecated_member_use
+                    color: Theme.of(context).colorScheme.onPrimaryContainer.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '${widget.examYear} EC',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.onPrimaryContainer,
+                    ),
+                  ),
+                ),
+            ],
           ),
 
           const SizedBox(height: 6),

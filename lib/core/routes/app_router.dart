@@ -42,6 +42,8 @@ import 'package:edurise/features/admin/presentation/question_package_details_scr
 import 'package:edurise/features/admin/presentation/assign_questions_screen.dart';
 import 'package:edurise/features/admin/presentation/past_exam_upload_screen.dart';
 import 'package:edurise/features/admin/presentation/past_exam_question_editor_screen.dart';
+import 'package:edurise/features/admin/presentation/import_practice_questions_screen.dart';
+import 'package:edurise/features/admin/presentation/import_past_exams_screen.dart';
 // Challenges
 import 'package:edurise/features/challenges/presentation/add_challenge_screen.dart';
 import 'package:edurise/features/past_entrance_exams/presentation/exam_instructions_screen.dart';
@@ -56,14 +58,15 @@ import 'package:edurise/features/notifications/presentation/notifications_screen
 class AppRouter {
   static final router = GoRouter(
     initialLocation: '/',
-    redirect: (context, state) {
+    redirect: (context, state) async {
       final path = state.matchedLocation;
       if (path.startsWith('/admin')) {
         final user = FirebaseAuth.instance.currentUser;
         if (user == null) {
           return '/login';
         }
-        if (!AdminService.isAuthorizedAdmin) {
+        final isAuthorized = await AdminService.isCurrentAuthorizedAdmin();
+        if (!isAuthorized) {
           return '/home';
         }
       }
@@ -138,8 +141,8 @@ class AppRouter {
               GoRoute(
                 path: '/practice-selection',
                 builder: (context, state) {
-                  final grade = state.uri.queryParameters['grade'] ?? '';
-                  final stream = state.uri.queryParameters['stream'] ?? '';
+                  final grade = state.uri.queryParameters['grade'];
+                  final stream = state.uri.queryParameters['stream'];
                   return PracticeSelectionScreen(grade: grade, stream: stream);
                 },
               ),
@@ -216,6 +219,9 @@ class AppRouter {
               0;
           final unitName =
               (extra['unitName'] as String?) ?? state.uri.queryParameters['unitName'] ?? '';
+          final examYear =
+              (extra['examYear'] as int?) ??
+              int.tryParse(state.uri.queryParameters['examYear'] ?? '');
           final questionCount =
               (extra['questionCount'] as int?) ??
               int.tryParse(state.uri.queryParameters['questionCount'] ?? '10') ??
@@ -227,6 +233,7 @@ class AppRouter {
             subject: subject,
             unitNumber: unitNumber,
             unitName: unitName,
+            examYear: examYear,
             questionCount: questionCount,
           );
         },
@@ -332,6 +339,20 @@ class AppRouter {
         path: '/admin/add-question',
         builder: (context, state) {
           return const AddQuestionScreen();
+        },
+      ),
+
+      GoRoute(
+        path: '/admin/questions/import',
+        builder: (context, state) {
+          return const ImportPracticeQuestionsScreen();
+        },
+      ),
+
+      GoRoute(
+        path: '/admin/past-exams/import',
+        builder: (context, state) {
+          return const ImportPastExamsScreen();
         },
       ),
 

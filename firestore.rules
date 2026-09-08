@@ -1,163 +1,424 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
     // ============================================================
-    // HELPER FUNCTIONS
+    // AUTHENTICATION & ROLE HELPERS
     // ============================================================
 
-    function isAuthenticated() {
+    function isSignedIn() {
       return request.auth != null;
     }
 
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Tier 1: Forward-compatible Firebase Auth Custom Claims
+    function hasCustomClaim(roleName) {
+      return isSignedIn()
+             && ('role' in request.auth.token)
+             && request.auth.token.role == roleName;
+    }
+
+    // Tier 3: Bootstrap Root Authority
+    function isBootstrapFounder() {
+      return isSignedIn()
+             && request.auth.token.email != null
+             && request.auth.token.email.lower() == 'olanamengistu2@gmail.com';
+    }
+
+    function isBootstrapAdmin() {
+      return isSignedIn()
+             && request.auth.token.email != null
+             && request.auth.token.email.lower() == 'tamiratboja@gmail.com';
+    }
+
+    // Safe helper checking admins/{uid}
+    function isAdminByUid(targetRole) {
+      return isSignedIn()
+             && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+             && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.isActive == true
+             && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == targetRole;
+    }
+
+    // Safe helper checking admins/{email} (provisioning fallback)
+    function isAdminByEmail(targetRole) {
+      return isSignedIn()
+             && request.auth.token.email != null
+             && exists(/databases/$(database)/documents/admins/$(request.auth.token.email.lower()))
+             && get(/databases/$(database)/documents/admins/$(request.auth.token.email.lower())).data.isActive == true
+             && get(/databases/$(database)/documents/admins/$(request.auth.token.email.lower())).data.role == targetRole;
+    }
+
+    // Tier 4: Legacy/backward-compatible check on students/{uid}.role
+    // (guarded with exists() to NEVER throw missing-document runtime error)
+    function isStudentDocRole(targetRole) {
+      return isSignedIn()
+             && exists(/databases/$(database)/documents/students/$(request.auth.uid))
+             && ('role' in get(/databases/$(database)/documents/students/$(request.auth.uid)).data)
+             && get(/databases/$(database)/documents/students/$(request.auth.uid)).data.role == targetRole;
+    }
+
+    // Comprehensive Founder Check
     function isFounder() {
-      return isAuthenticated() && (
-        request.auth.token.email.lower() == 'olanamengistu2@gmail.com' ||
-        (exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'founder' &&
-         get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.isActive == true)
+      return isSignedIn() && (
+        hasCustomClaim('founder') ||
+        isBootstrapFounder() ||
+        isAdminByUid('founder') ||
+        isAdminByEmail('founder') ||
+        isStudentDocRole('founder')
       );
     }
 
+    // Comprehensive Admin Check
     function isAdmin() {
-      return isAuthenticated() && (
-        request.auth.token.email.lower() == 'tamiratboja@gmail.com' ||
-        (exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.isActive == true)
+      return isSignedIn() && (
+        hasCustomClaim('admin') ||
+        isBootstrapAdmin() ||
+        isAdminByUid('admin') ||
+        isAdminByEmail('admin') ||
+        isStudentDocRole('admin')
       );
     }
 
+    // Authorized Admin: Either Founder or Admin
     function isAuthorizedAdmin() {
       return isFounder() || isAdmin();
     }
 
-    // ============================================================
-    // ADMINS COLLECTION (FOUNDER ONLY MANAGEMENT)
-    // ============================================================
-    match /admins/{adminId} {
-      allow read: if isAuthorizedAdmin();
-      allow create, update, delete: if isFounder();
+    // Check if authenticated student has paid subscription / active access
+    function isPaidStudent() {
+      return isSignedIn()
+             && exists(/databases/$(database)/documents/students/$(request.auth.uid))
+             && (
+               get(/databases/$(database)/documents/students/$(request.auth.uid)).data.isPaid == true ||
+               get(/databases/$(database)/documents/students/$(request.auth.uid)).data.accessStatus == 'active'
+             );
     }
 
+    // Role Management Authority: Strictly Founder Only
+    function canManageRoles() {
+      return isFounder();
+    }
+
+
     // ============================================================
-    // STUDENTS COLLECTION
-    // Student can only read/update own document.
-    // Student CANNOT modify payment status, role, or access fields.
+    // 1. ADMINS COLLECTION (FOUNDER-ONLY MANAGEMENT)
     // ============================================================
+
+    match /admins/{adminId} {
+      // Authorized admins can view the admin roster
+      allow read: if isAuthorizedAdmin();
+
+      // Only Founder can create new administrators with valid roles
+      allow create: if canManageRoles()
+                    && request.resource.data.role in ['founder', 'admin']
+                    && request.resource.data.isActive is bool;
+
+      // Only Founder can update admin status/roles
+      allow update: if canManageRoles()
+                    && request.resource.data.role in ['founder', 'admin']
+                    && request.resource.data.isActive is bool;
+
+      // Founder can delete admins, but cannot delete the bootstrap founder account
+      allow delete: if canManageRoles()
+                    && (!('email' in resource.data) || resource.data.email != 'olanamengistu2@gmail.com');
+    }
+
+
+    // ============================================================
+    // 2. STUDENTS COLLECTION
+    // ============================================================
+
     match /students/{studentId} {
-      allow read: if isAuthenticated() && (request.auth.uid == studentId || isAuthorizedAdmin());
-      allow create: if isAuthenticated() && request.auth.uid == studentId
+      // Student can read own profile; Admin/Founder can read for management
+      allow read: if isOwner(studentId) || isAuthorizedAdmin();
+
+      // Student creates own profile on onboarding.
+      // MUST NOT set privileged fields: role, isPaid, accessStatus, etc.
+      // MUST only set valid stream ('natural' or 'social') if stream is included.
+      allow create: if isOwner(studentId)
+                    && (!('stream' in request.resource.data) || request.resource.data.stream in ['natural', 'social'])
+                    && (!('role' in request.resource.data) || request.resource.data.role == 'student')
                     && !('isPaid' in request.resource.data)
                     && !('accessStatus' in request.resource.data)
-                    && !('role' in request.resource.data);
-      allow update: if isAuthorizedAdmin() || (
-        isAuthenticated() && request.auth.uid == studentId
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isPaid', 'accessStatus', 'role', 'paidUntil', 'approvedBy'])
-      );
-      allow delete: if isAuthorizedAdmin();
-    }
+                    && !('paidUntil' in request.resource.data)
+                    && !('approvedBy' in request.resource.data)
+                    && !('activePaymentId' in request.resource.data);
 
-    // ============================================================
-    // PAYMENT SUBMISSIONS (CRITICAL ACCESS CONTROL)
-    // Student creates with status == 'pending'.
-    // Student CANNOT approve/reject or modify status.
-    // ============================================================
-    match /payment_submissions/{submissionId} {
-      allow read: if isAuthenticated() && (
-        resource.data.studentId == request.auth.uid || isAuthorizedAdmin()
+      // Updates:
+      // Case 1: Student updates own profile (CANNOT touch role, isPaid, accessStatus, etc.)
+      //         CANNOT change stream once established (stream is permanently locked).
+      // Case 2: Admin updates student (CAN toggle paid/access, but CANNOT touch role)
+      // Case 3: Founder updates student (can manage roles with valid role string)
+      allow update: if (
+        isOwner(studentId) &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'isPaid', 'accessStatus', 'role', 'paidUntil', 'approvedBy', 'activePaymentId'
+        ]) &&
+        // Stream lock:
+        // 1. If stream is not in request (e.g. updating grade or name only): allowed
+        // 2. If stream was already set in resource: incoming stream MUST match existing stream
+        // 3. If stream was never set or was empty: student can establish it as 'natural' or 'social'
+        (
+          (!('stream' in request.resource.data)) ||
+          (('stream' in resource.data) && resource.data.stream != '' && request.resource.data.stream == resource.data.stream) ||
+          ((!('stream' in resource.data) || resource.data.stream == '') && request.resource.data.stream in ['natural', 'social'])
+        )
+      ) || (
+        isAdmin() &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])
+      ) || (
+        isFounder() &&
+        (!('role' in request.resource.data) || request.resource.data.role in ['student', 'admin', 'founder'])
       );
-      allow create: if isAuthenticated() &&
-                    request.resource.data.studentId == request.auth.uid &&
-                    request.resource.data.status == 'pending';
-      allow update: if isAuthorizedAdmin();
+
+      // Only Founder can delete student profiles
       allow delete: if isFounder();
     }
 
+
     // ============================================================
-    // AUDIT LOGS (IMMUTABLE)
+    // 3. QUESTIONS LIBRARY (PRACTICE)
     // ============================================================
+
+    match /questions/{questionId} {
+      // Students can ONLY read published questions.
+      // Free students can test with Grade 12, 2017 EC questions across all subjects.
+      // Paid students and Admins have full access to published questions.
+      allow read: if isAuthorizedAdmin()
+                  || (
+                    isSignedIn()
+                    && resource.data.status == 'published'
+                    && (
+                      (resource.data.grade == 'Grade 12' && resource.data.examYear == 2017)
+                      || isPaidStudent()
+                    )
+                  );
+
+      // Only authorized administrators can create, update, or delete questions
+      allow create: if isAuthorizedAdmin();
+      allow update: if isAuthorizedAdmin();
+      allow delete: if isAuthorizedAdmin();
+    }
+
+
+    // ============================================================
+    // 4. PRACTICE RESULTS
+    // ============================================================
+
+    match /practice_results/{resultId} {
+      // Student can read only their own result; Admin/Founder can read for monitoring
+      allow read: if isAuthorizedAdmin()
+                  || (
+                    isSignedIn()
+                    && resource.data.userId == request.auth.uid
+                  );
+
+      // Student can create only their own result
+      allow create: if isSignedIn()
+                    && request.resource.data.userId == request.auth.uid;
+
+      // Ownership-protected update: student cannot transfer ownership (userId must remain unchanged)
+      allow update: if isAuthorizedAdmin()
+                    || (
+                      isSignedIn()
+                      && resource.data.userId == request.auth.uid
+                      && request.resource.data.userId == resource.data.userId
+                    );
+
+      // Student can delete own results; Admin can delete for administration
+      allow delete: if isAuthorizedAdmin()
+                    || (
+                      isSignedIn()
+                      && resource.data.userId == request.auth.uid
+                    );
+    }
+
+
+    // ============================================================
+    // 5. STUDY TASKS
+    // ============================================================
+
+    match /study_tasks/{taskId} {
+      allow read: if isAuthorizedAdmin()
+                  || (
+                    isSignedIn()
+                    && resource.data.userId == request.auth.uid
+                  );
+
+      allow create: if isSignedIn()
+                    && request.resource.data.userId == request.auth.uid;
+
+      allow update: if isAuthorizedAdmin()
+                    || (
+                      isSignedIn()
+                      && resource.data.userId == request.auth.uid
+                      && request.resource.data.userId == resource.data.userId
+                    );
+
+      allow delete: if isAuthorizedAdmin()
+                    || (
+                      isSignedIn()
+                      && resource.data.userId == request.auth.uid
+                    );
+    }
+
+
+    // ============================================================
+    // 6. CHALLENGES
+    // ============================================================
+
+    match /challenges/{challengeId} {
+      allow read: if isAuthorizedAdmin()
+                  || (
+                    isSignedIn()
+                    && resource.data.userId == request.auth.uid
+                  );
+
+      allow create: if isSignedIn()
+                    && request.resource.data.userId == request.auth.uid;
+
+      allow update: if isAuthorizedAdmin()
+                    || (
+                      isSignedIn()
+                      && resource.data.userId == request.auth.uid
+                      && request.resource.data.userId == resource.data.userId
+                    );
+
+      allow delete: if isAuthorizedAdmin()
+                    || (
+                      isSignedIn()
+                      && resource.data.userId == request.auth.uid
+                    );
+    }
+
+
+    // ============================================================
+    // 7. PAST ENTRANCE EXAMS & EXAM QUESTIONS
+    // ============================================================
+
+    match /past_exams/{examId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAuthorizedAdmin();
+    }
+
+    match /past_exam_questions/{questionId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAuthorizedAdmin();
+    }
+
+
+    // ============================================================
+    // 8. QUESTION PACKAGES
+    // ============================================================
+
+    match /question_packages/{packageId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAuthorizedAdmin();
+
+      match /questions/{qId} {
+        allow read: if isSignedIn();
+        allow create, update, delete: if isAuthorizedAdmin();
+      }
+    }
+
+
+    // ============================================================
+    // 9. BOOK UNITS
+    // ============================================================
+
+    match /book_units/{unitId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAuthorizedAdmin();
+    }
+
+
+    // ============================================================
+    // 10. PAYMENT SUBMISSIONS (FINANCIAL ACCESS CONTROL)
+    // ============================================================
+
+    match /payment_submissions/{submissionId} {
+      // Student reads own submission; Admin/Founder reads all
+      allow read: if isAuthorizedAdmin()
+                  || (
+                    isSignedIn()
+                    && resource.data.studentId == request.auth.uid
+                  );
+
+      // Student creates own submission strictly with pending status
+      allow create: if isSignedIn()
+                    && request.resource.data.studentId == request.auth.uid
+                    && request.resource.data.status == 'pending';
+
+      // Only administrators can review (approve/reject) payments
+      allow update: if isAuthorizedAdmin();
+
+      // Only Founder can delete payment records
+      allow delete: if isFounder();
+    }
+
+
+    // ============================================================
+    // 11. NOTIFICATIONS
+    // ============================================================
+
+    match /notifications/{notificationId} {
+      // Student reads own notifications or broadcast ('all'); Admin reads all
+      allow read: if isAuthorizedAdmin()
+                  || (
+                    isSignedIn()
+                    && (resource.data.userId in [request.auth.uid, 'all'] || resource.data.userId == request.auth.uid || resource.data.userId == 'all')
+                  );
+
+      // Admin can send notifications; Students can only trigger payment alert notifications
+      allow create: if isAuthorizedAdmin()
+                    || (
+                      isSignedIn()
+                      && request.resource.data.type == 'admin_alert'
+                    );
+
+      // Student can only toggle 'isRead' on own notifications; Admin has full update
+      allow update: if isAuthorizedAdmin()
+                    || (
+                      isSignedIn()
+                      && (resource.data.userId in [request.auth.uid, 'all'] || resource.data.userId == request.auth.uid || resource.data.userId == 'all')
+                      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead'])
+                    );
+
+      allow delete: if isAuthorizedAdmin();
+    }
+
+
+    // ============================================================
+    // 12. AUDIT LOGS (STRICTLY IMMUTABLE AUDIT TRAIL)
+    // ============================================================
+
     match /audit_logs/{logId} {
       allow read: if isAuthorizedAdmin();
       allow create: if isAuthorizedAdmin();
       allow update, delete: if false; // Immutable audit trail
     }
 
-    // ============================================================
-    // NOTIFICATIONS
-    // ============================================================
-    match /notifications/{notificationId} {
-      allow read: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid ||
-        resource.data.userId == 'all' ||
-        isAuthorizedAdmin()
-      );
-      allow create: if isAuthorizedAdmin();
-      allow update: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid || resource.data.userId == 'all'
-      ) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead']);
-      allow delete: if isAuthorizedAdmin();
-    }
 
     // ============================================================
-    // CONTENT: QUESTIONS, PACKAGES, BOOKS, PAST EXAMS
+    // 13. SYSTEM SETTINGS
     // ============================================================
-    match /questions/{questionId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthorizedAdmin();
-    }
 
-    match /question_packages/{packageId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthorizedAdmin();
-
-      match /questions/{qId} {
-        allow read: if isAuthenticated();
-        allow write: if isAuthorizedAdmin();
-      }
-    }
-
-    match /book_units/{unitId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthorizedAdmin();
-    }
-
-    match /past_exams/{examId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthorizedAdmin();
-    }
-
-    match /past_exam_questions/{questionId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthorizedAdmin();
-    }
-
-    // ============================================================
-    // STUDENT PRACTICE RESULTS & STUDY TASKS
-    // ============================================================
-    match /practice_results/{resultId} {
-      allow read: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid || isAuthorizedAdmin()
-      );
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isAuthorizedAdmin();
-    }
-
-    match /study_tasks/{taskId} {
-      allow read: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid || isAuthorizedAdmin()
-      );
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid || isAuthorizedAdmin()
-      );
-    }
-
-    // ============================================================
-    // SYSTEM SETTINGS
-    // ============================================================
     match /system_settings/{settingId} {
-      allow read: if isAuthenticated();
+      allow read: if isSignedIn();
       allow write: if isAuthorizedAdmin();
+    }
+
+
+    // ============================================================
+    // DEFAULT DENY: STRICT CATCH-ALL
+    // ============================================================
+
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

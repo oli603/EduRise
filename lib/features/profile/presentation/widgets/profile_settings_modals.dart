@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/constants/app_subjects.dart';
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/settings/app_settings_controller.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -46,27 +47,20 @@ class ProfileSettingsModals {
                           val == null || val.trim().isEmpty ? 'Please enter your name.' : null,
                     ),
                     const SizedBox(height: 16),
-                    DropdownButtonFormField<String>(
-                      initialValue: selectedStream,
+                    TextFormField(
+                      initialValue: currentStream.toLowerCase().contains('social')
+                          ? l10n.socialScience
+                          : l10n.naturalScience,
                       decoration: InputDecoration(
                         labelText: l10n.stream,
                         prefixIcon: const Icon(Icons.school_outlined),
+                        suffixIcon: const Tooltip(
+                          message: 'Stream is locked and cannot be changed.',
+                          child: Icon(Icons.lock_outline_rounded, size: 18, color: Colors.grey),
+                        ),
+                        helperText: 'Stream cannot be changed after selection.',
                       ),
-                      items: [
-                        DropdownMenuItem(
-                          value: 'Natural Science',
-                          child: Text(l10n.naturalScience),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Social Science',
-                          child: Text(l10n.socialScience),
-                        ),
-                      ],
-                      onChanged: (val) {
-                        if (val != null) {
-                          setDialogState(() => selectedStream = val);
-                        }
-                      },
+                      enabled: false,
                     ),
                   ],
                 ),
@@ -85,7 +79,6 @@ class ProfileSettingsModals {
                           try {
                             await profileService.updatePersonalInfo(
                               name: nameController.text.trim(),
-                              stream: selectedStream,
                             );
                             if (dialogContext.mounted) {
                               Navigator.pop(dialogContext);
@@ -211,42 +204,7 @@ class ProfileSettingsModals {
     required String stream,
   }) {
     final l10n = AppLocalizations.of(context);
-    List<String> subjects;
-
-    final isHigherGrade = grade.contains('11') || grade.contains('12');
-    if (isHigherGrade) {
-      if (stream.toLowerCase().contains('social')) {
-        subjects = const [
-          'Mathematics',
-          'Economics',
-          'Geography',
-          'History',
-          'English',
-          'Civics & Ethical Education',
-        ];
-      } else {
-        subjects = const [
-          'Mathematics',
-          'Physics',
-          'Chemistry',
-          'Biology',
-          'English',
-          'Civics & Ethical Education',
-        ];
-      }
-    } else {
-      subjects = const [
-        'Mathematics',
-        'Physics',
-        'Chemistry',
-        'Biology',
-        'English',
-        'Geography',
-        'History',
-        'Civics',
-        'Economics',
-      ];
-    }
+    final subjects = EduRiseSubjects.getProfileSubjects(stream: stream, grade: grade);
 
     showModalBottomSheet(
       context: context,

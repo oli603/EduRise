@@ -106,10 +106,24 @@ class ChallengeService {
     return Challenge.fromMap(document.id, document.data()!);
   }
 
-  /// Increase today's practice challenge progress by 1.
+  /// Update the target questions count of a challenge.
+  Future<void> updateTargetCount({
+    required String challengeId,
+    required int targetCount,
+  }) async {
+    if (challengeId.isEmpty) return;
+    await _challengesCollection.doc(challengeId).update({
+      'targetCount': targetCount,
+    });
+  }
+
+  /// Increase today's practice challenge progress by [count].
   Future<void> incrementPracticeChallenge({
     required String userId,
     required String subject,
+    String? grade,
+    int? unitNumber,
+    int count = 1,
   }) async {
     final today = DateTime.now();
 
@@ -128,7 +142,8 @@ class ChallengeService {
       final data = document.data();
 
       final challengeSubject = data['subject'] as String? ?? '';
-
+      final challengeGrade = data['grade'] as String? ?? '';
+      final challengeUnitNumber = (data['unitNumber'] as num?)?.toInt() ?? 0;
       final challengeType = data['challengeType'] as String? ?? '';
 
       final scheduledDate = Challenge.fromMap(document.id, data).scheduledDate;
@@ -138,28 +153,47 @@ class ChallengeService {
           scheduledDate.isBefore(endOfDay);
 
       final isPracticeChallenge = challengeType == 'practice';
-
-      final sameSubject = challengeSubject == subject;
-
+      final sameSubject = challengeSubject.toLowerCase() == subject.toLowerCase();
+      final sameGrade = grade == null || grade.isEmpty || challengeGrade.toLowerCase() == grade.toLowerCase();
+      final sameUnit = unitNumber == null || unitNumber == 0 || challengeUnitNumber == unitNumber;
       final isCompleted = data['isCompleted'] as bool? ?? false;
 
-      return isToday && isPracticeChallenge && sameSubject && !isCompleted;
+      return isToday && isPracticeChallenge && sameSubject && sameGrade && sameUnit && !isCompleted;
     }).toList();
 
-    if (matchingChallenges.isEmpty) {
+    final candidateDocs = matchingChallenges.isNotEmpty
+        ? matchingChallenges
+        : snapshot.docs.where((document) {
+            final data = document.data();
+            final challengeSubject = data['subject'] as String? ?? '';
+            final challengeType = data['challengeType'] as String? ?? '';
+            final scheduledDate = Challenge.fromMap(document.id, data).scheduledDate;
+            final isToday =
+                !scheduledDate.isBefore(startOfDay) &&
+                scheduledDate.isBefore(endOfDay);
+            final isPracticeChallenge = challengeType == 'practice';
+            final sameSubject = challengeSubject.toLowerCase() == subject.toLowerCase();
+            final isCompleted = data['isCompleted'] as bool? ?? false;
+            return isToday && isPracticeChallenge && sameSubject && !isCompleted;
+          }).toList();
+
+    if (candidateDocs.isEmpty) {
       return;
     }
 
     // For now, update the first matching challenge.
-    final document = matchingChallenges.first;
+    final document = candidateDocs.first;
 
     final data = document.data();
 
-    final currentCount = data['currentCount'] as int? ?? 0;
+    final currentCount = (data['currentCount'] as num?)?.toInt() ?? 0;
 
-    final targetCount = data['targetCount'] as int? ?? 0;
+    final targetCount = (data['targetCount'] as num?)?.toInt() ?? 0;
 
-    final newCount = currentCount + 1;
+    final rawNewCount = currentCount + count;
+    final newCount = targetCount > 0
+        ? (rawNewCount > targetCount ? targetCount : rawNewCount)
+        : rawNewCount;
 
     final completed = targetCount > 0 && newCount >= targetCount;
 

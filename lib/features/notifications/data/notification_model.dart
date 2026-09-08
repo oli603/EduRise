@@ -22,16 +22,47 @@ class AppNotification {
   });
 
   factory AppNotification.fromMap(String id, Map<String, dynamic> data) {
+    final rawUserId = data['userId'] ?? data['target'] ?? data['recipientId'];
+    final rawTitle = data['title'] ?? data['heading'] ?? data['subject'];
+    final rawBody = data['body'] ?? data['message'] ?? data['content'] ?? data['description'];
+    final rawType = data['type'];
+    final rawIsRead = data['isRead'];
+
     return AppNotification(
       id: id,
-      userId: data['userId'] as String? ?? 'all',
-      title: data['title'] as String? ?? '',
-      body: data['body'] as String? ?? '',
-      type: data['type'] as String? ?? 'announcement',
-      isRead: data['isRead'] as bool? ?? false,
-      createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
-      metadata: data['metadata'] as Map<String, dynamic>?,
+      userId: rawUserId?.toString() ?? 'all',
+      title: rawTitle?.toString() ?? '',
+      body: rawBody?.toString() ?? '',
+      type: rawType?.toString() ?? 'announcement',
+      isRead: rawIsRead is bool ? rawIsRead : (rawIsRead?.toString().toLowerCase() == 'true'),
+      createdAt: _parseDateTime(data['createdAt']),
+      metadata: _parseMetadata(data['metadata']),
     );
+  }
+
+  static DateTime? _parseDateTime(dynamic value) {
+    if (value == null) return null;
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
+    if (value is String) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty) return null;
+      return DateTime.tryParse(trimmed);
+    }
+    return null;
+  }
+
+  static Map<String, dynamic>? _parseMetadata(dynamic value) {
+    if (value == null) return null;
+    if (value is Map) {
+      try {
+        return value.map((k, v) => MapEntry(k.toString(), v));
+      } catch (_) {
+        return null;
+      }
+    }
+    return null;
   }
 
   Map<String, dynamic> toMap() {

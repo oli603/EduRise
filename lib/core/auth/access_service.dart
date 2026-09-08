@@ -40,6 +40,38 @@ class AccessService {
   }
 
   // ============================================================
+  // FREE ACCESS POLICY EVALUATION
+  // Allowed free test: Grade 12 + 2017 EC + all applicable subjects
+  // All other grades and entrance years require paid access.
+  // ============================================================
+
+  static bool isFreeAllowedPractice({
+    required String grade,
+    required int examYear,
+  }) {
+    final cleanGrade = grade.trim();
+    return cleanGrade == 'Grade 12' && examYear == 2017;
+  }
+
+  static Future<bool> canAccessPractice({
+    required String grade,
+    required int examYear,
+  }) async {
+    // Free students may test platform with Grade 12, 2017 EC content
+    if (isFreeAllowedPractice(grade: grade, examYear: examYear)) {
+      return true;
+    }
+
+    // Otherwise requires paid access
+    return await hasPaidAccess();
+  }
+
+  static Future<bool> canAccessChallenges() async {
+    // Challenges require paid access
+    return await hasPaidAccess();
+  }
+
+  // ============================================================
   // STREAM CURRENT USER ACCESS STATUS
   // ============================================================
 

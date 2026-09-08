@@ -1,16 +1,21 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../data/progress_service.dart';
 
 class ProgressScreen extends StatefulWidget {
-  const ProgressScreen({super.key});
+  final ProgressService? progressService;
+
+  const ProgressScreen({super.key, this.progressService});
 
   @override
   State<ProgressScreen> createState() => _ProgressScreenState();
 }
 
 class _ProgressScreenState extends State<ProgressScreen> {
-  final ProgressService _progressService = ProgressService();
+  late final ProgressService _progressService;
+  StreamSubscription<List<Map<String, dynamic>>>? _resultsSubscription;
 
   bool _isLoading = true;
   String? _errorMessage;
@@ -23,7 +28,78 @@ class _ProgressScreenState extends State<ProgressScreen> {
   @override
   void initState() {
     super.initState();
-    _loadProgress();
+    _progressService = widget.progressService ?? ProgressService();
+    _subscribeToProgress();
+  }
+
+  @override
+  void dispose() {
+    _resultsSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _subscribeToProgress() {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    _resultsSubscription = _progressService.getUserResultsStream().listen(
+      (results) {
+        _applyResults(results);
+      },
+      onError: (e) {
+        debugPrint('PROGRESS STREAM ERROR: $e');
+        if (!mounted) return;
+        setState(() {
+          _errorMessage = 'Unable to load your progress.\n\n$e';
+          _isLoading = false;
+        });
+      },
+    );
+  }
+
+  void _applyResults(List<Map<String, dynamic>> results) {
+    int totalQuestions = 0;
+    int correctAnswers = 0;
+    int wrongAnswers = 0;
+
+    for (final result in results) {
+      final tQ = (result['totalQuestions'] as num?)?.toInt() ?? 0;
+      final cA = (result['correctAnswers'] as num?)?.toInt() ?? 0;
+      final wA = (result['wrongAnswers'] as num?)?.toInt() ??
+          (tQ >= cA ? (tQ - cA) : 0);
+
+      totalQuestions += tQ;
+      correctAnswers += cA;
+      wrongAnswers += wA;
+    }
+
+    final accuracy = totalQuestions == 0
+        ? 0
+        : ((correctAnswers / totalQuestions) * 100).round();
+
+    final userId = FirebaseAuth.instance.currentUser?.uid ?? 'unknown';
+
+    // Required debug logs from Part 9
+    print('=== PROGRESS CALCULATION ===');
+    print('User ID: $userId');
+    print('Total practice sessions: ${results.length}');
+    print('Sum total questions: $totalQuestions');
+    print('Sum correct answers: $correctAnswers');
+    print('Sum wrong answers: $wrongAnswers');
+    print('Overall accuracy: $accuracy%');
+    print('============================');
+
+    if (!mounted) return;
+
+    setState(() {
+      _totalQuestions = totalQuestions;
+      _correctAnswers = correctAnswers;
+      _incorrectAnswers = wrongAnswers;
+      _accuracy = accuracy;
+      _isLoading = false;
+    });
   }
 
   Future<void> _loadProgress() async {
@@ -34,28 +110,7 @@ class _ProgressScreenState extends State<ProgressScreen> {
 
     try {
       final results = await _progressService.getUserResults();
-
-      final total = results.length;
-
-      final correct = results.where((result) {
-        return result['isCorrect'] == true;
-      }).length;
-
-      final incorrect = results.where((result) {
-        return result['isCorrect'] == false;
-      }).length;
-
-      final accuracy = total == 0 ? 0 : ((correct / total) * 100).round();
-
-      if (!mounted) return;
-
-      setState(() {
-        _totalQuestions = total;
-        _correctAnswers = correct;
-        _incorrectAnswers = incorrect;
-        _accuracy = accuracy;
-        _isLoading = false;
-      });
+      _applyResults(results);
     } catch (e) {
       debugPrint('PROGRESS ERROR: $e');
 

@@ -75,6 +75,13 @@ class Question {
     this.createdAt,
   });
 
+  static int _parseInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+    return 0;
+  }
+
   // ============================================================
   // FIRESTORE → QUESTION
   // ============================================================
@@ -83,33 +90,33 @@ class Question {
     return Question(
       id: id,
 
-      grade: data['grade'] as String? ?? '',
+      grade: (data['grade'] ?? data['textbook_grade'] ?? data['textbookGrade']) as String? ?? '',
 
       stream: data['stream'] as String? ?? '',
 
       subject: data['subject'] as String? ?? '',
 
-      unitNumber: data['unitNumber'] as int? ?? 0,
+      unitNumber: _parseInt(data['unitNumber'] ?? data['unit_number']),
 
-      unitName: data['unitName'] as String? ?? '',
+      unitName: (data['unitName'] ?? data['unit_name']) as String? ?? '',
 
-      questionNumber: data['questionNumber'] as int? ?? 0,
+      questionNumber: _parseInt(data['questionNumber'] ?? data['question_number']),
 
-      question: data['question'] as String? ?? '',
+      question: (data['question'] ?? data['question_text']) as String? ?? '',
 
-      questionImageUrl: data['questionImageUrl'] as String?,
+      questionImageUrl: (data['questionImageUrl'] ?? data['imageUrl']) as String?,
 
       options: List<String>.from(data['options'] ?? []),
 
-      correctAnswer: data['correctAnswer'] as String? ?? '',
+      correctAnswer: (data['correctAnswer'] ?? data['answer']) as String? ?? '',
 
       explanation: data['explanation'] as String? ?? '',
 
       explanationImageUrl: data['explanationImageUrl'] as String?,
 
-      examYear: data['examYear'] as int? ?? 0,
+      examYear: _parseInt(data['examYear'] ?? data['entrance_year_ec'] ?? data['entranceYearEc'] ?? data['year']),
 
-      examType: data['examType'] as String? ?? '',
+      examType: (data['examType'] ?? data['exam_type']) as String? ?? '',
 
       status: data['status'] as String? ?? 'draft',
 

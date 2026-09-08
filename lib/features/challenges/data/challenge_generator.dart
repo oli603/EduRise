@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 
+import '../../practice/data/question_service.dart';
 import 'challenge_model.dart';
 import 'challenge_service.dart';
 
@@ -25,14 +27,13 @@ class ChallengeGenerator {
     // 1. GET RECENT PRACTICE RESULTS
     // ------------------------------------------------------------
 
-    final resultsSnapshot = await _firestore
-        .collection('practice_results')
-        .where('userId', isEqualTo: userId)
-        .orderBy('timestamp', descending: true)
-        .limit(50)
-        .get();
-
-    if (resultsSnapshot.docs.isEmpty) {
+    QuerySnapshot<Map<String, dynamic>> resultsSnapshot;
+    try {
+      resultsSnapshot = await _firestore
+          .collection('practice_results')
+          .where('userId', isEqualTo: userId)
+          .get();
+    } catch (e) {
       return null;
     }
 
@@ -63,10 +64,6 @@ class ChallengeGenerator {
       groupedResults[key]!.add(data);
     }
 
-    if (groupedResults.isEmpty) {
-      return null;
-    }
-
     // ------------------------------------------------------------
     // 3. FIND WEAKEST UNIT
     // ------------------------------------------------------------
@@ -77,17 +74,15 @@ class ChallengeGenerator {
     for (final entry in groupedResults.entries) {
       final results = entry.value;
 
-      // We need at least 3 questions before deciding
-      // that this is a weak area.
-      if (results.length < 3) {
-        continue;
+      int totalQ = 0;
+      int correctA = 0;
+      for (final r in results) {
+        totalQ += (r['totalQuestions'] as num?)?.toInt() ?? 0;
+        correctA += (r['correctAnswers'] as num?)?.toInt() ?? 0;
       }
+      if (totalQ == 0) continue;
 
-      final correctCount = results.where((result) {
-        return result['isCorrect'] == true;
-      }).length;
-
-      final accuracy = correctCount / results.length;
+      final accuracy = correctA / totalQ;
 
       if (accuracy < weakestAccuracy) {
         weakestAccuracy = accuracy;
@@ -95,8 +90,28 @@ class ChallengeGenerator {
       }
     }
 
-    // We couldn't find enough data to determine
-    // a weak unit.
+    // If student has no weak unit history, find first available published question
+    if (weakestKey == null) {
+      try {
+        final qSnap = await _firestore
+            .collection('questions')
+            .where('status', isEqualTo: 'published')
+            .limit(1)
+            .get();
+
+        if (qSnap.docs.isNotEmpty) {
+          final qData = qSnap.docs.first.data();
+          final g = qData['grade'] as String? ?? 'Grade 11';
+          final s = qData['subject'] as String? ?? 'Biology';
+          final uNum = (qData['unitNumber'] as num?)?.toInt() ?? 1;
+          final uName = (qData['unitName'] as String?)?.isNotEmpty == true
+              ? qData['unitName'] as String
+              : 'Unit $uNum';
+          weakestKey = '$g|$s|$uNum|$uName';
+        }
+      } catch (_) {}
+    }
+
     if (weakestKey == null) {
       return null;
     }
@@ -139,6 +154,30 @@ class ChallengeGenerator {
     // 6. CREATE NEW CHALLENGE
     // ------------------------------------------------------------
 
+    final questionService = QuestionService();
+    final stream = QuestionService.normalizeStream(null, subject: subject);
+    int availableQuestions = 0;
+    try {
+      final questions = await questionService.getQuestions(
+        grade: grade,
+        stream: stream,
+        subject: subject,
+        unitNumber: unitNumber,
+      );
+      availableQuestions = questions.length;
+    } catch (e) {
+      debugPrint('Error counting published questions for challenge: $e');
+    }
+
+    final targetCount = availableQuestions > 0
+        ? (availableQuestions > 10 ? 10 : availableQuestions)
+        : 1;
+
+    debugPrint('Challenge available questions: $availableQuestions');
+    debugPrint('Challenge questions loaded: $targetCount');
+    debugPrint('Current index: 0');
+    debugPrint('Total questions: $targetCount');
+
     final challenge = Challenge(
       id: '',
       userId: userId,
@@ -158,7 +197,7 @@ class ChallengeGenerator {
 
       unitName: unitName,
 
-      targetCount: 10,
+      targetCount: targetCount,
 
       currentCount: 0,
 

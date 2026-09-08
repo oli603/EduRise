@@ -1,4 +1,5 @@
 rules_version = '2';
+
 service firebase.storage {
   match /b/{bucket}/o {
 
@@ -6,9 +7,12 @@ service firebase.storage {
       return request.auth != null;
     }
 
+    // Supports forward-compatible Custom Claims and bootstrap authority
     function isAuthorizedAdmin() {
       return isAuthenticated() && (
-        request.auth.token.email.lower() in ['olanamengistu2@gmail.com', 'tamiratboja@gmail.com']
+        (('role' in request.auth.token) && request.auth.token.role in ['admin', 'founder']) ||
+        (request.auth.token.email != null &&
+         request.auth.token.email.lower() in ['olanamengistu2@gmail.com', 'tamiratboja@gmail.com'])
       );
     }
 
@@ -28,11 +32,16 @@ service firebase.storage {
       allow delete: if isAuthorizedAdmin();
     }
 
-    // Question images
+    // Question images uploaded by admin
     match /question_images/{fileName} {
       allow write: if isAuthorizedAdmin();
       allow read: if isAuthenticated();
       allow delete: if isAuthorizedAdmin();
+    }
+
+    // Catch-all default deny
+    match /{allPaths=**} {
+      allow read, write: if false;
     }
   }
 }

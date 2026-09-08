@@ -6,6 +6,7 @@ import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/widgets/edurise_text_field.dart';
 import '../../../../core/widgets/primary_button.dart';
 import '../../../../core/widgets/secondary_button.dart';
+import 'package:edurise/features/admin/data/admin_service.dart';
 import 'package:edurise/features/auth/data/auth_service.dart';
 import 'package:edurise/features/profile_setup/data/profile_service.dart';
 
@@ -43,34 +44,31 @@ class _LoginFormState extends State<LoginForm> {
 
     if (!mounted) return;
 
-    setState(() {
-      _isLoading = false;
-    });
-
     if (!result.isSuccess) {
+      setState(() {
+        _isLoading = false;
+      });
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(result.message)));
-
       return;
     }
 
     try {
-      final exists = await _profileService.profileExists();
-
+      final destination = await AdminService.resolvePostAuthRoute(forceRefresh: true);
       if (!mounted) return;
-
-      if (exists) {
-        context.go('/home');
-      } else {
-        context.go('/profile-setup');
-      }
+      setState(() {
+        _isLoading = false;
+      });
+      context.go(destination);
     } catch (e) {
       if (!mounted) return;
-
+      setState(() {
+        _isLoading = false;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Unable to check your profile. Please try again.'),
+        const SnackBar(
+          content: Text('Unable to complete sign in. Please try again.'),
         ),
       );
     }
@@ -93,19 +91,20 @@ class _LoginFormState extends State<LoginForm> {
       password: _passwordController.text,
     );
 
-    // 4. Stop loading
-    setState(() {
-      _isLoading = false;
-    });
+    if (!mounted) return;
 
-    // 5. Check authentication result
+    // 4. Resolve role and navigate
     if (result.isSuccess) {
+      final destination = await AdminService.resolvePostAuthRoute(forceRefresh: true);
       if (!mounted) return;
-
-      context.go('/home');
+      setState(() {
+        _isLoading = false;
+      });
+      context.go(destination);
     } else {
-      if (!mounted) return;
-
+      setState(() {
+        _isLoading = false;
+      });
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(result.message)));

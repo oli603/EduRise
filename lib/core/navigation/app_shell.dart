@@ -237,6 +237,7 @@ class AppShell extends StatelessWidget {
               title: const Text('Sign Out'),
               onTap: () async {
                 Navigator.of(context).pop();
+                AdminService.clearCache();
                 await FirebaseAuth.instance.signOut();
                 if (context.mounted) {
                   context.go('/login');

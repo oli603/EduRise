@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -246,6 +247,21 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               onTap: () {
                 Navigator.of(context).pop();
                 context.go('/home');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.logout_rounded, color: Colors.red),
+              title: const Text(
+                'Sign Out',
+                style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+              ),
+              onTap: () async {
+                Navigator.of(context).pop();
+                AdminService.clearCache();
+                await FirebaseAuth.instance.signOut();
+                if (context.mounted) {
+                  context.go('/login');
+                }
               },
             ),
           ],
@@ -1019,7 +1035,15 @@ class _PaymentListTabState extends State<_PaymentListTab> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(item.studentName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                            Expanded(
+                              child: Text(
+                                item.studentName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
                             Text(
                               '${item.amount.toStringAsFixed(0)} ETB',
                               style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary, fontSize: 16),
@@ -1263,7 +1287,14 @@ class _PaymentReviewSheetState extends State<_PaymentReviewSheet> {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-        SelectableText(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+        const SizedBox(width: 12),
+        Flexible(
+          child: SelectableText(
+            value,
+            textAlign: TextAlign.end,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          ),
+        ),
       ],
     );
   }
@@ -1337,9 +1368,12 @@ class _ContentQuestionsTab extends StatefulWidget {
 class _ContentQuestionsTabState extends State<_ContentQuestionsTab> {
   final AdminQuestionService _questionService = AdminQuestionService();
   String _selectedGrade = 'all';
-  final String _selectedSubject = 'all';
+  String _selectedSubject = 'all';
+  String _selectedStatus = 'all';
   List<Question> _questions = [];
+  final Set<String> _selectedQuestionIds = {};
   bool _isLoading = true;
+  bool _isBatchProcessing = false;
 
   @override
   void initState() {
@@ -1348,16 +1382,97 @@ class _ContentQuestionsTabState extends State<_ContentQuestionsTab> {
   }
 
   Future<void> _fetch() async {
-    setState(() => _isLoading = true);
-    final list = await _questionService.getAdminQuestions(
-      grade: _selectedGrade,
-      subject: _selectedSubject,
+    setState(() {
+      _isLoading = true;
+      _selectedQuestionIds.clear();
+    });
+    try {
+      final list = await _questionService.getAdminQuestions(
+        grade: _selectedGrade,
+        subject: _selectedSubject,
+        status: _selectedStatus,
+      );
+      if (mounted) {
+        setState(() {
+          _questions = list;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading questions: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _updateStatus(String id, String newStatus) async {
+    try {
+      await _questionService.updateQuestionStatus(id, newStatus);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            newStatus == 'published'
+                ? 'Question published successfully.'
+                : 'Question moved to $newStatus.',
+          ),
+        ),
+      );
+      _fetch();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to update status: $e')),
+      );
+    }
+  }
+
+  Future<void> _bulkUpdateStatus(String newStatus) async {
+    if (_selectedQuestionIds.isEmpty) return;
+
+    final actionLabel = newStatus == 'published' ? 'Publish' : 'Unpublish';
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text('$actionLabel ${_selectedQuestionIds.length} Questions?'),
+        content: Text(
+          'Are you sure you want to change status to "$newStatus" for ${_selectedQuestionIds.length} selected questions?',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(actionLabel),
+          ),
+        ],
+      ),
     );
-    if (mounted) {
-      setState(() {
-        _questions = list;
-        _isLoading = false;
-      });
+
+    if (confirm != true) return;
+
+    setState(() => _isBatchProcessing = true);
+    try {
+      final count = await _questionService.updateMultipleQuestionsStatus(
+        _selectedQuestionIds.toList(),
+        newStatus,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Successfully updated $count questions to $newStatus.')),
+      );
+      _fetch();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Batch operation failed: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isBatchProcessing = false);
+      }
     }
   }
 
@@ -1386,80 +1501,333 @@ class _ContentQuestionsTabState extends State<_ContentQuestionsTab> {
 
   @override
   Widget build(BuildContext context) {
+    final allSelected = _questions.isNotEmpty && _selectedQuestionIds.length == _questions.length;
+
     return Column(
       children: [
+        // 1. FILTER CONTROLS & ADD / IMPORT BUTTONS
         Padding(
           padding: const EdgeInsets.all(16),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  initialValue: _selectedGrade,
-                  decoration: const InputDecoration(labelText: 'Grade', contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
-                  items: const [
-                    DropdownMenuItem(value: 'all', child: Text('All Grades')),
-                    DropdownMenuItem(value: 'Grade 9', child: Text('Grade 9')),
-                    DropdownMenuItem(value: 'Grade 10', child: Text('Grade 10')),
-                    DropdownMenuItem(value: 'Grade 11', child: Text('Grade 11')),
-                    DropdownMenuItem(value: 'Grade 12', child: Text('Grade 12')),
-                  ],
-                  onChanged: (v) {
-                    if (v != null) {
-                      _selectedGrade = v;
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  // Grade filter
+                  SizedBox(
+                    width: 140,
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _selectedGrade,
+                      decoration: const InputDecoration(
+                        labelText: 'Grade',
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'all', child: Text('All Grades')),
+                        DropdownMenuItem(value: 'Grade 9', child: Text('Grade 9')),
+                        DropdownMenuItem(value: 'Grade 10', child: Text('Grade 10')),
+                        DropdownMenuItem(value: 'Grade 11', child: Text('Grade 11')),
+                        DropdownMenuItem(value: 'Grade 12', child: Text('Grade 12')),
+                      ],
+                      onChanged: (v) {
+                        if (v != null) {
+                          setState(() => _selectedGrade = v);
+                          _fetch();
+                        }
+                      },
+                    ),
+                  ),
+
+                  // Subject filter
+                  SizedBox(
+                    width: 140,
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _selectedSubject,
+                      decoration: const InputDecoration(
+                        labelText: 'Subject',
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'all', child: Text('All Subjects')),
+                        DropdownMenuItem(value: 'Biology', child: Text('Biology')),
+                        DropdownMenuItem(value: 'Chemistry', child: Text('Chemistry')),
+                        DropdownMenuItem(value: 'Physics', child: Text('Physics')),
+                        DropdownMenuItem(value: 'Mathematics', child: Text('Mathematics')),
+                        DropdownMenuItem(value: 'English', child: Text('English')),
+                        DropdownMenuItem(value: 'Economics', child: Text('Economics')),
+                        DropdownMenuItem(value: 'Geography', child: Text('Geography')),
+                        DropdownMenuItem(value: 'History', child: Text('History')),
+                      ],
+                      onChanged: (v) {
+                        if (v != null) {
+                          setState(() => _selectedSubject = v);
+                          _fetch();
+                        }
+                      },
+                    ),
+                  ),
+
+                  // Status filter
+                  SizedBox(
+                    width: 140,
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _selectedStatus,
+                      decoration: const InputDecoration(
+                        labelText: 'Status',
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'all', child: Text('All Status')),
+                        DropdownMenuItem(value: 'published', child: Text('Published')),
+                        DropdownMenuItem(value: 'review', child: Text('Review')),
+                        DropdownMenuItem(value: 'draft', child: Text('Draft')),
+                      ],
+                      onChanged: (v) {
+                        if (v != null) {
+                          setState(() => _selectedStatus = v);
+                          _fetch();
+                        }
+                      },
+                    ),
+                  ),
+
+                  // Action Buttons
+                  FilledButton.icon(
+                    onPressed: () async {
+                      await context.push('/admin/add-question');
                       _fetch();
-                    }
-                  },
-                ),
+                    },
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Add Question'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      await context.push('/admin/questions/import');
+                      _fetch();
+                    },
+                    icon: const Icon(Icons.upload_file_outlined, size: 18),
+                    label: const Text('Bulk Import'),
+                  ),
+                ],
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: () async {
-                    await context.push('/admin/add-question');
-                    _fetch();
-                  },
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add Question'),
+
+              // 2. BULK SELECTION ACTION BAR
+              if (_questions.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: Row(
+                    children: [
+                      Checkbox(
+                        value: allSelected,
+                        onChanged: (val) {
+                          setState(() {
+                            if (val == true) {
+                              _selectedQuestionIds.addAll(_questions.map((q) => q.id));
+                            } else {
+                              _selectedQuestionIds.clear();
+                            }
+                          });
+                        },
+                      ),
+                      Text(
+                        _selectedQuestionIds.isEmpty
+                            ? 'Select all (${_questions.length})'
+                            : '${_selectedQuestionIds.length} selected',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                      const Spacer(),
+                      if (_selectedQuestionIds.isNotEmpty) ...[
+                        FilledButton.tonalIcon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.green.shade100,
+                            foregroundColor: Colors.green.shade800,
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                          ),
+                          onPressed: _isBatchProcessing ? null : () => _bulkUpdateStatus('published'),
+                          icon: const Icon(Icons.check_circle_outline, size: 16),
+                          label: const Text('Publish Selected', style: TextStyle(fontSize: 12)),
+                        ),
+                        const SizedBox(width: 8),
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                          ),
+                          onPressed: _isBatchProcessing ? null : () => _bulkUpdateStatus('draft'),
+                          icon: const Icon(Icons.unpublished_outlined, size: 16),
+                          label: const Text('Unpublish Selected', style: TextStyle(fontSize: 12)),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
+
+        // 3. QUESTIONS LIST VIEW
         Expanded(
           child: _isLoading
               ? const Center(child: CircularProgressIndicator())
               : _questions.isEmpty
                   ? const Center(child: Text('No questions found for selection.'))
                   : ListView.separated(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       itemCount: _questions.length,
                       separatorBuilder: (_, _) => const SizedBox(height: 10),
                       itemBuilder: (context, index) {
                         final q = _questions[index];
+                        final isSelected = _selectedQuestionIds.contains(q.id);
+                        final isPublished = q.status.toLowerCase() == 'published';
+                        final isReview = q.status.toLowerCase() == 'review';
+
                         return Card(
                           elevation: 0,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(14),
-                            side: const BorderSide(color: AppColors.border),
+                            side: BorderSide(
+                              color: isSelected ? AppColors.primary : AppColors.border,
+                              width: isSelected ? 1.8 : 1.0,
+                            ),
                           ),
                           child: Padding(
-                            padding: const EdgeInsets.all(14),
+                            padding: const EdgeInsets.all(12),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Text('${q.grade} • ${q.subject} • Unit ${q.unitNumber}', style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 12)),
+                                    Checkbox(
+                                      value: isSelected,
+                                      onChanged: (checked) {
+                                        setState(() {
+                                          if (checked == true) {
+                                            _selectedQuestionIds.add(q.id);
+                                          } else {
+                                            _selectedQuestionIds.remove(q.id);
+                                          }
+                                        });
+                                      },
+                                    ),
+                                    Expanded(
+                                      child: Text(
+                                        '${q.grade} • ${q.subject} • Unit ${q.unitNumber} ${q.unitName.isNotEmpty ? "(${q.unitName})" : ""}',
+                                        style: const TextStyle(
+                                          color: AppColors.primary,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    // Status Badge
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: isPublished
+                                            ? Colors.green.shade50
+                                            : isReview
+                                                ? Colors.orange.shade50
+                                                : Colors.grey.shade100,
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                          color: isPublished
+                                              ? Colors.green.shade400
+                                              : isReview
+                                                  ? Colors.orange.shade400
+                                                  : Colors.grey.shade400,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        q.status.toUpperCase(),
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          color: isPublished
+                                              ? Colors.green.shade800
+                                              : isReview
+                                                  ? Colors.orange.shade800
+                                                  : Colors.grey.shade800,
+                                        ),
+                                      ),
+                                    ),
                                     IconButton(
                                       icon: const Icon(Icons.delete_outline, color: AppColors.error, size: 20),
                                       onPressed: () => _deleteQuestion(q.id),
                                     ),
                                   ],
                                 ),
-                                Text(q.question, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                                const SizedBox(height: 4),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                                  child: Text(
+                                    q.question,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                                  ),
+                                ),
                                 const SizedBox(height: 6),
-                                Text('Correct Answer: ${q.correctAnswer}', style: const TextStyle(fontSize: 12, color: AppColors.success, fontWeight: FontWeight.bold)),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                                  child: Row(
+                                    children: [
+                                      Text(
+                                        'Correct: ${q.correctAnswer}',
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: AppColors.success,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      if (q.examYear > 0) ...[
+                                        const SizedBox(width: 12),
+                                        Text(
+                                          'Year: ${q.examYear} EC',
+                                          style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                                        ),
+                                      ],
+                                      const Spacer(),
+                                      // Individual Publish/Unpublish button
+                                      if (!isPublished)
+                                        FilledButton.tonalIcon(
+                                          style: FilledButton.styleFrom(
+                                            backgroundColor: Colors.green.shade50,
+                                            foregroundColor: Colors.green.shade800,
+                                            visualDensity: VisualDensity.compact,
+                                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                                          ),
+                                          onPressed: () => _updateStatus(q.id, 'published'),
+                                          icon: const Icon(Icons.publish, size: 14),
+                                          label: const Text('Publish', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                        )
+                                      else
+                                        OutlinedButton.icon(
+                                          style: OutlinedButton.styleFrom(
+                                            foregroundColor: Colors.orange.shade800,
+                                            side: BorderSide(color: Colors.orange.shade300),
+                                            visualDensity: VisualDensity.compact,
+                                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                                          ),
+                                          onPressed: () => _updateStatus(q.id, 'draft'),
+                                          icon: const Icon(Icons.unpublished_outlined, size: 14),
+                                          label: const Text('Unpublish', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                        ),
+                                    ],
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -1619,9 +1987,9 @@ class _ContentPastExamsTab extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push('/admin/past-exams/upload'),
-        icon: const Icon(Icons.upload),
-        label: const Text('Upload Exam'),
+        onPressed: () => context.push('/admin/past-exams/import'),
+        icon: const Icon(Icons.upload_file_rounded),
+        label: const Text('Bulk Import Exams'),
       ),
       body: Center(
         child: Padding(
@@ -1639,10 +2007,22 @@ class _ContentPastExamsTab extends StatelessWidget {
                 style: TextStyle(color: AppColors.textSecondary),
               ),
               const SizedBox(height: 20),
-              FilledButton.icon(
-                onPressed: () => context.push('/admin/past-exams/upload'),
-                icon: const Icon(Icons.add),
-                label: const Text('Upload New Past Exam'),
+              Wrap(
+                spacing: 12,
+                runSpacing: 10,
+                alignment: WrapAlignment.center,
+                children: [
+                  FilledButton.icon(
+                    onPressed: () => context.push('/admin/past-exams/upload'),
+                    icon: const Icon(Icons.add),
+                    label: const Text('Upload Exam (Manual)'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => context.push('/admin/past-exams/import'),
+                    icon: const Icon(Icons.upload_file_outlined),
+                    label: const Text('Bulk Import Exams'),
+                  ),
+                ],
               ),
             ],
           ),
@@ -1693,10 +2073,10 @@ class _MonitoringView extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        _metric('Total Sessions', '${data['totalSessions'] ?? 0}'),
-                        _metric('Avg Score', '${data['averageScore'] ?? 0}%'),
-                        _metric('Questions Solved', '${data['totalQuestionsAnswered'] ?? 0}'),
-                        _metric('Accuracy', '${data['overallAccuracy'] ?? 0}%'),
+                        Expanded(child: _metric('Total Sessions', '${data['totalSessions'] ?? 0}')),
+                        Expanded(child: _metric('Avg Score', '${data['averageScore'] ?? 0}%')),
+                        Expanded(child: _metric('Questions Solved', '${data['totalQuestionsAnswered'] ?? 0}')),
+                        Expanded(child: _metric('Accuracy', '${data['overallAccuracy'] ?? 0}%')),
                       ],
                     ),
                   ],
@@ -1789,7 +2169,7 @@ class _MonitoringView extends StatelessWidget {
       children: [
         Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppColors.primary)),
         const SizedBox(height: 2),
-        Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+        Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
       ],
     );
   }
@@ -2078,7 +2458,10 @@ class _AuditLogsViewState extends State<_AuditLogsView> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Administrative Audit Trail', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              const Expanded(
+                child: Text('Administrative Audit Trail', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              ),
+              const SizedBox(width: 8),
               DropdownButton<String>(
                 value: _filter,
                 underline: const SizedBox.shrink(),

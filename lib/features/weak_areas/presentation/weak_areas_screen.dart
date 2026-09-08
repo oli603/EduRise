@@ -6,22 +6,32 @@ import '../../../core/theme/app_spacing.dart';
 import '../data/weak_areas_service.dart';
 
 class WeakAreasScreen extends StatefulWidget {
-  const WeakAreasScreen({super.key});
+  final WeakAreasService? weakAreasService;
+  final List<WeakArea>? initialWeakAreas;
+
+  const WeakAreasScreen({
+    super.key,
+    this.weakAreasService,
+    this.initialWeakAreas,
+  });
 
   @override
   State<WeakAreasScreen> createState() => _WeakAreasScreenState();
 }
 
 class _WeakAreasScreenState extends State<WeakAreasScreen> {
-  final WeakAreasService _weakAreasService = WeakAreasService();
-
+  late final WeakAreasService _weakAreasService;
   late Future<List<WeakArea>> _weakAreasFuture;
 
   @override
   void initState() {
     super.initState();
-
-    _weakAreasFuture = _weakAreasService.getWeakAreas();
+    _weakAreasService = widget.weakAreasService ?? WeakAreasService();
+    if (widget.initialWeakAreas != null) {
+      _weakAreasFuture = Future.value(widget.initialWeakAreas);
+    } else {
+      _weakAreasFuture = _weakAreasService.getWeakAreas();
+    }
   }
 
   void _refresh() {
@@ -186,20 +196,12 @@ class _WeakAreasScreenState extends State<WeakAreasScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      area.subject,
+                      area.displayTitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 16,
+                        fontSize: 15,
                         fontWeight: FontWeight.w700,
-                      ),
-                    ),
-
-                    const SizedBox(height: 3),
-
-                    Text(
-                      area.topic,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.grey.shade600,
                       ),
                     ),
                   ],
@@ -240,9 +242,15 @@ class _WeakAreasScreenState extends State<WeakAreasScreen> {
             child: OutlinedButton.icon(
               onPressed: () {
                 context.push(
-                  '/practice'
-                  '?subject=${Uri.encodeComponent(area.subject)}'
-                  '&topic=${Uri.encodeComponent(area.topic)}',
+                  '/practice',
+                  extra: {
+                    'grade': area.grade.isNotEmpty ? area.grade : 'Grade 11',
+                    'stream': area.stream ?? 'Natural Science',
+                    'subject': area.subject,
+                    'unitNumber': area.unitNumber,
+                    'unitName': area.unitName,
+                    'questionCount': 10,
+                  },
                 );
               },
               icon: const Icon(Icons.play_arrow_rounded),

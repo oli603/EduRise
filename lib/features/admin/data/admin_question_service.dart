@@ -19,8 +19,9 @@ class AdminQuestionService {
     String? stream,
     String? subject,
     int? unitNumber,
+    String? status,
     String? searchQuery,
-    int limit = 50,
+    int limit = 100,
   }) async {
     final isAuthorized = await AdminService.isCurrentAuthorizedAdmin();
     if (!isAuthorized) throw Exception('Unauthorized access.');
@@ -41,6 +42,10 @@ class AdminQuestionService {
 
     if (unitNumber != null && unitNumber > 0) {
       query = query.where('unitNumber', isEqualTo: unitNumber);
+    }
+
+    if (status != null && status.isNotEmpty && status != 'all') {
+      query = query.where('status', isEqualTo: status);
     }
 
     final snapshot = await query.limit(limit).get();
@@ -107,5 +112,37 @@ class AdminQuestionService {
       targetId: questionId,
       metadata: {'status': status},
     );
+  }
+
+  // ============================================================
+  // BULK UPDATE QUESTION STATUS
+  // ============================================================
+
+  Future<int> updateMultipleQuestionsStatus(
+    List<String> questionIds,
+    String status,
+  ) async {
+    final isAuthorized = await AdminService.isCurrentAuthorizedAdmin();
+    if (!isAuthorized) throw Exception('Unauthorized access.');
+    if (questionIds.isEmpty) return 0;
+
+    final batch = _firestore.batch();
+    for (final id in questionIds) {
+      batch.update(_questionsCollection.doc(id), {'status': status});
+    }
+
+    await batch.commit();
+
+    await AuditService.logAction(
+      action: 'bulk_question_status_updated',
+      targetType: 'question',
+      targetId: 'bulk',
+      metadata: {
+        'status': status,
+        'count': questionIds.length,
+      },
+    );
+
+    return questionIds.length;
   }
 }

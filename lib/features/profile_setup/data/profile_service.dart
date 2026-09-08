@@ -2,8 +2,16 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class ProfileService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore? _customFirestore;
+  final FirebaseAuth? _customAuth;
+
+  ProfileService({FirebaseFirestore? firestore, FirebaseAuth? auth})
+      : _customFirestore = firestore,
+        _customAuth = auth;
+
+  FirebaseFirestore get _firestore =>
+      _customFirestore ?? FirebaseFirestore.instance;
+  FirebaseAuth get _auth => _customAuth ?? FirebaseAuth.instance;
 
   // ============================================================
   // CHECK IF PROFILE EXISTS
@@ -62,11 +70,13 @@ class ProfileService {
       throw Exception('No authenticated user found.');
     }
 
+    final canonicalStream = stream.toLowerCase().contains('social') ? 'social' : 'natural';
+
     await _firestore.collection('students').doc(user.uid).set({
       'name': name.trim(),
       'email': user.email,
       'grade': grade,
-      'stream': stream,
+      'stream': canonicalStream,
       'createdAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }
@@ -77,14 +87,14 @@ class ProfileService {
 
   Future<void> updatePersonalInfo({
     required String name,
-    required String stream,
+    String? stream,
   }) async {
     final user = _auth.currentUser;
     if (user == null) throw Exception('No authenticated user found.');
 
+    // Stream is locked after onboarding and must not be modified by normal updates.
     await _firestore.collection('students').doc(user.uid).update({
       'name': name.trim(),
-      'stream': stream.trim(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }

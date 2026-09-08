@@ -2,29 +2,49 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/auth/access_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
+import '../../../core/widgets/access_locked_dialog.dart';
+import '../../practice/data/question_service.dart';
 import '../data/challenge_generator.dart';
 import '../data/challenge_model.dart';
 import '../data/challenge_service.dart';
 
 class ChallengesScreen extends StatefulWidget {
-  const ChallengesScreen({super.key});
+  final List<Challenge>? initialChallenges;
+
+  const ChallengesScreen({super.key, this.initialChallenges});
 
   @override
   State<ChallengesScreen> createState() => _ChallengesScreenState();
 }
 
 class _ChallengesScreenState extends State<ChallengesScreen> {
-  final ChallengeService _challengeService = ChallengeService();
-  final ChallengeGenerator _challengeGenerator = ChallengeGenerator();
+  late final ChallengeService _challengeService;
+  late final ChallengeGenerator _challengeGenerator;
 
   late Future<List<Challenge>> _challengesFuture;
 
   @override
   void initState() {
     super.initState();
-    _loadChallenges();
+    if (widget.initialChallenges != null) {
+      _challengesFuture = Future.value(widget.initialChallenges);
+    } else {
+      _challengeService = ChallengeService();
+      _challengeGenerator = ChallengeGenerator();
+      _loadChallenges();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant ChallengesScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialChallenges != null &&
+        widget.initialChallenges != oldWidget.initialChallenges) {
+      _challengesFuture = Future.value(widget.initialChallenges);
+    }
   }
 
   /// Load today's challenges.
@@ -64,11 +84,58 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
       }
     }
 
-    return challenges;
+    final syncedChallenges = <Challenge>[];
+    final questionService = QuestionService();
+
+    for (final challenge in challenges) {
+      if (challenge.challengeType == 'practice' && challenge.subject.isNotEmpty) {
+        final stream = QuestionService.normalizeStream(null, subject: challenge.subject);
+        try {
+          final questions = await questionService.getQuestions(
+            grade: challenge.grade,
+            stream: stream,
+            subject: challenge.subject,
+            unitNumber: challenge.unitNumber,
+          );
+
+          final availableCount = questions.length;
+          final actualTarget = availableCount > 0
+              ? (availableCount > 10 ? 10 : availableCount)
+              : (challenge.targetCount > 0 ? challenge.targetCount : 1);
+
+          debugPrint('Challenge available questions: $availableCount');
+          debugPrint('Challenge questions loaded: $actualTarget');
+          debugPrint('Current index: ${challenge.currentCount}');
+          debugPrint('Total questions: $actualTarget');
+
+          if (challenge.targetCount != actualTarget) {
+            final updatedChallenge = challenge.copyWith(targetCount: actualTarget);
+            await _challengeService.updateTargetCount(
+              challengeId: challenge.id,
+              targetCount: actualTarget,
+            );
+            syncedChallenges.add(updatedChallenge);
+            continue;
+          }
+        } catch (e) {
+          debugPrint('Error checking question count for challenge: $e');
+        }
+      }
+      syncedChallenges.add(challenge);
+    }
+
+    return syncedChallenges;
   }
 
   /// Refresh today's challenges.
   Future<void> _refreshChallenges() async {
+    if (widget.initialChallenges != null) {
+      setState(() {
+        _challengesFuture = Future.value(widget.initialChallenges);
+      });
+      return;
+    }
+
     setState(() {
       _loadChallenges();
     });
@@ -378,14 +445,47 @@ class _ChallengeCard extends StatelessWidget {
             child: FilledButton.icon(
               onPressed: isCompleted
                   ? null
-                  : () {
+                  : () async {
+                      final hasAccess = await AccessService.canAccessChallenges();
+                      if (!hasAccess) {
+                        if (!context.mounted) return;
+                        AccessLockedDialog.show(context, featureName: 'Challenges');
+                        return;
+                      }
+
+                      // Required debug logs from Part 9
+                      print('=== CHALLENGE START ===');
+                      print('Challenge title: ${challenge.title}');
+                      print('Grade: ${challenge.grade}');
+                      print('Subject: ${challenge.subject}');
+                      print('Unit number: ${challenge.unitNumber}');
+                      print('Unit name: ${challenge.unitName}');
+                      print('Target count: ${challenge.targetCount}');
+                      print('=======================');
+
+                      final stream = QuestionService.normalizeStream(
+                        null,
+                        subject: challenge.subject,
+                      );
+
+                      final count = challenge.targetCount > 0 ? challenge.targetCount : 1;
+
                       context.push(
                         '/practice'
                         '?grade=${Uri.encodeComponent(challenge.grade)}'
+                        '&stream=${Uri.encodeComponent(stream)}'
                         '&subject=${Uri.encodeComponent(challenge.subject)}'
-                        '&unitNumber=0'
-                        '&unitName=${Uri.encodeComponent(challenge.title)}'
-                        '&questionCount=${challenge.targetCount}',
+                        '&unitNumber=${challenge.unitNumber}'
+                        '&unitName=${Uri.encodeComponent(challenge.unitName)}'
+                        '&questionCount=$count',
+                        extra: {
+                          'grade': challenge.grade,
+                          'stream': stream,
+                          'subject': challenge.subject,
+                          'unitNumber': challenge.unitNumber,
+                          'unitName': challenge.unitName,
+                          'questionCount': count,
+                        },
                       );
                     },
               icon: Icon(
@@ -396,25 +496,6 @@ class _ChallengeCard extends StatelessWidget {
               ),
             ),
           ),
-
-          // --------------------------------------------------
-          // START BUTTON
-          // --------------------------------------------------
-          if (!isCompleted) ...[
-            const SizedBox(height: 18),
-
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: FilledButton.icon(
-                onPressed: () {
-                  // We will connect this to Practice next.
-                },
-                icon: const Icon(Icons.play_arrow_rounded),
-                label: const Text('Start Challenge'),
-              ),
-            ),
-          ],
         ],
       ),
     );

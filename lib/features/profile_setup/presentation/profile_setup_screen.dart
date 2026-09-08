@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/primary_button.dart';
@@ -9,7 +10,7 @@ import '../../../core/widgets/edurise_text_field.dart';
 import 'package:edurise/features/profile_setup/data/profile_service.dart';
 
 class ProfileSetupScreen extends StatefulWidget {
-  const ProfileSetupScreen({super.key, required this.stream});
+  const ProfileSetupScreen({super.key, this.stream = ''});
 
   final String stream;
 
@@ -25,8 +26,22 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   final ProfileService _profileService = ProfileService();
 
   String? _selectedGrade;
+  String? _selectedStream;
 
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.stream.isNotEmpty) {
+      final normalized = widget.stream.toLowerCase();
+      if (normalized.contains('social')) {
+        _selectedStream = 'social';
+      } else if (normalized.contains('natural')) {
+        _selectedStream = 'natural';
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -35,7 +50,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   }
 
   Future<void> _continue() async {
-    // Validate name
+    // Validate form inputs (name and stream)
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -45,16 +60,14 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Please select your grade.")),
       );
-
       return;
     }
 
     // Validate stream
-    if (widget.stream.isEmpty) {
+    if (_selectedStream == null || _selectedStream!.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Your stream was not selected.")),
+        const SnackBar(content: Text("Please select your stream.")),
       );
-
       return;
     }
 
@@ -65,9 +78,9 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     try {
       // Save complete student profile
       await _profileService.saveProfile(
-        name: _nameController.text,
+        name: _nameController.text.trim(),
         grade: _selectedGrade!,
-        stream: widget.stream,
+        stream: _selectedStream!,
       );
 
       if (!mounted) return;
@@ -118,13 +131,9 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
 
                 const SizedBox(height: 40),
 
-                const Text(
-                  "Full Name",
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                ),
-
-                const SizedBox(height: 10),
-
+                // --------------------------------------------------
+                // FULL NAME (SINGLE FIELD WITH LABEL)
+                // --------------------------------------------------
                 EduRiseTextField(
                   controller: _nameController,
                   label: "Full Name",
@@ -147,6 +156,30 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 const Text(
                   "Which grade are you in?",
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+
+                const SizedBox(height: 12),
+
+                _buildChoiceCard(
+                  title: "Grade 9",
+                  selected: _selectedGrade == "Grade 9",
+                  onTap: () {
+                    setState(() {
+                      _selectedGrade = "Grade 9";
+                    });
+                  },
+                ),
+
+                const SizedBox(height: 12),
+
+                _buildChoiceCard(
+                  title: "Grade 10",
+                  selected: _selectedGrade == "Grade 10",
+                  onTap: () {
+                    setState(() {
+                      _selectedGrade = "Grade 10";
+                    });
+                  },
                 ),
 
                 const SizedBox(height: 12),
@@ -176,69 +209,60 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 const SizedBox(height: 30),
 
                 // --------------------------------------------------
-                // STREAM
+                // STREAM (SELECTABLE DROPDOWN)
                 // --------------------------------------------------
                 const Text(
-                  "Your stream",
+                  "Stream",
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 ),
 
                 const SizedBox(height: 12),
 
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(
-                    // ignore: deprecated_member_use
-                    color: AppColors.primary.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      // ignore: deprecated_member_use
-                      color: AppColors.primary.withOpacity(0.25),
+                DropdownButtonFormField<String>(
+                  value: _selectedStream,
+                  decoration: InputDecoration(
+                    hintText: "Select Stream",
+                    prefixIcon: const Icon(Icons.school_outlined, color: AppColors.primary),
+                    filled: true,
+                    fillColor: Theme.of(context).colorScheme.surface,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.lg),
+                      borderSide: BorderSide.none,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.lg),
+                      borderSide: BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.lg),
+                      borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+                    ),
+                    errorBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.lg),
+                      borderSide: const BorderSide(color: AppColors.error, width: 1.5),
                     ),
                   ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        widget.stream == "Natural Science"
-                            ? Icons.science_rounded
-                            : Icons.public_rounded,
-                        color: AppColors.primary,
-                      ),
-
-                      const SizedBox(width: 12),
-
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              "Selected Stream",
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: Colors.black54,
-                              ),
-                            ),
-
-                            const SizedBox(height: 4),
-
-                            Text(
-                              widget.stream,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const Icon(
-                        Icons.check_circle_rounded,
-                        color: Colors.green,
-                      ),
-                    ],
-                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'natural',
+                      child: Text('Natural'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'social',
+                      child: Text('Social'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedStream = value;
+                    });
+                  },
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return "Please select your stream.";
+                    }
+                    return null;
+                  },
                 ),
 
                 const SizedBox(height: 40),

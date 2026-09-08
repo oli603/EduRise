@@ -1,7 +1,10 @@
 import 'dart:async';
-import 'package:edurise/core/theme/app_text_styles.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+
+import '../../../core/theme/app_text_styles.dart';
+import '../../admin/data/admin_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -15,11 +18,32 @@ class _SplashScreenState extends State<SplashScreen> {
   void initState() {
     super.initState();
 
-    Timer(const Duration(seconds: 2), () {
+    _handleStartup();
+  }
+
+  Future<void> _handleStartup() async {
+    // Show branded splash screen for at least 1.5 seconds
+    await Future.delayed(const Duration(milliseconds: 1500));
+
+    if (!mounted) return;
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        final destination = await AdminService.resolvePostAuthRoute();
+        if (mounted) {
+          context.go(destination);
+        }
+      } catch (_) {
+        if (mounted) {
+          context.go('/onboarding');
+        }
+      }
+    } else {
       if (mounted) {
         context.go('/onboarding');
       }
-    });
+    }
   }
 
   @override

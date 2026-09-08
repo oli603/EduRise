@@ -281,6 +281,7 @@ class ProfileScreen extends StatelessWidget {
                     height: 52,
                     child: OutlinedButton.icon(
                       onPressed: () async {
+                        AdminService.clearCache();
                         await FirebaseAuth.instance.signOut();
                         if (context.mounted) {
                           context.go('/login');
