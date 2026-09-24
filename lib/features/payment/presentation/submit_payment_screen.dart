@@ -2,14 +2,16 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/edurise_text_field.dart';
 import '../../../core/widgets/primary_button.dart';
-import '../../admin/data/models/payment_model.dart';
-import '../../admin/data/payment_service.dart';
+import '../data/models/payment_submission.dart';
+import '../data/payment_service.dart';
+import '../data/payment_settings_service.dart';
 
 class SubmitPaymentScreen extends StatefulWidget {
   const SubmitPaymentScreen({super.key});
@@ -20,9 +22,10 @@ class SubmitPaymentScreen extends StatefulWidget {
 
 class _SubmitPaymentScreenState extends State<SubmitPaymentScreen> {
   final PaymentService _paymentService = PaymentService();
+  final PaymentSettingsService _settingsService = PaymentSettingsService();
   final _formKey = GlobalKey<FormState>();
 
-  final _amountController = TextEditingController(text: '500');
+  final _amountController = TextEditingController(text: '1499');
   final _refController = TextEditingController();
   String _selectedMethod = 'Telebirr';
   File? _selectedReceiptFile;
@@ -30,6 +33,7 @@ class _SubmitPaymentScreenState extends State<SubmitPaymentScreen> {
   bool _isLoading = false;
   bool _isFetchingStatus = true;
   PaymentSubmission? _latestSubmission;
+  PaymentSettings _systemSettings = PaymentSettings.defaults();
 
   final List<String> _paymentMethods = [
     'Telebirr',
@@ -42,7 +46,7 @@ class _SubmitPaymentScreenState extends State<SubmitPaymentScreen> {
   @override
   void initState() {
     super.initState();
-    _loadLatestSubmission();
+    _loadData();
   }
 
   @override
@@ -52,21 +56,40 @@ class _SubmitPaymentScreenState extends State<SubmitPaymentScreen> {
     super.dispose();
   }
 
-  Future<void> _loadLatestSubmission() async {
+  Future<void> _loadData() async {
     setState(() => _isFetchingStatus = true);
+    await Future.wait([
+      _loadLatestSubmission(),
+      _loadSettings(),
+    ]);
+    if (mounted) {
+      setState(() => _isFetchingStatus = false);
+    }
+  }
+
+  Future<void> _loadLatestSubmission() async {
     try {
       final submission = await _paymentService.getMyLatestSubmission();
       if (mounted) {
         setState(() {
           _latestSubmission = submission;
-          _isFetchingStatus = false;
         });
       }
-    } catch (_) {
+    } catch (_) {}
+  }
+
+  Future<void> _loadSettings() async {
+    try {
+      final settings = await _settingsService.getPaymentSettings();
       if (mounted) {
-        setState(() => _isFetchingStatus = false);
+        setState(() {
+          _systemSettings = settings;
+          if (_amountController.text.trim().isEmpty || _amountController.text.trim() == '500') {
+            _amountController.text = settings.subscriptionPrice.toStringAsFixed(0);
+          }
+        });
       }
-    }
+    } catch (_) {}
   }
 
   Future<void> _pickReceiptImage() async {
@@ -101,7 +124,7 @@ class _SubmitPaymentScreenState extends State<SubmitPaymentScreen> {
       return;
     }
 
-    final amount = double.tryParse(_amountController.text.trim()) ?? 500.0;
+    final amount = double.tryParse(_amountController.text.trim()) ?? _systemSettings.subscriptionPrice;
 
     setState(() => _isLoading = true);
 
@@ -124,7 +147,7 @@ class _SubmitPaymentScreenState extends State<SubmitPaymentScreen> {
         ),
       );
 
-      await _loadLatestSubmission();
+      await _loadData();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -149,7 +172,7 @@ class _SubmitPaymentScreenState extends State<SubmitPaymentScreen> {
       body: _isFetchingStatus
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
-              onRefresh: _loadLatestSubmission,
+              onRefresh: _loadData,
               child: ListView(
                 padding: const EdgeInsets.all(20),
                 children: [
@@ -171,7 +194,7 @@ class _SubmitPaymentScreenState extends State<SubmitPaymentScreen> {
                         borderRadius: BorderRadius.circular(16),
                         side: const BorderSide(color: AppColors.success),
                       ),
-                      color: AppColors.success.withOpacity(0.08),
+                      color: AppColors.success.withValues(alpha: 0.08),
                       child: Padding(
                         padding: const EdgeInsets.all(20),
                         child: Column(
@@ -212,20 +235,20 @@ class _SubmitPaymentScreenState extends State<SubmitPaymentScreen> {
     String message;
 
     if (submission.isPending) {
-      cardColor = AppColors.warning.withOpacity(0.1);
+      cardColor = AppColors.warning.withValues(alpha: 0.1);
       iconColor = AppColors.warning;
       icon = Icons.hourglass_top_rounded;
       title = 'Verification Pending';
       message =
           'Your payment receipt was submitted on ${submission.submittedAt?.toString().substring(0, 16) ?? 'recently'}. An administrator is reviewing your submission.';
     } else if (submission.isApproved) {
-      cardColor = AppColors.success.withOpacity(0.1);
+      cardColor = AppColors.success.withValues(alpha: 0.1);
       iconColor = AppColors.success;
       icon = Icons.verified_rounded;
       title = 'Payment Approved';
-      message = 'Your payment of ${submission.amount.toStringAsFixed(0)} ETB has been confirmed. Full access is active.';
+      message = 'Your payment of ${submission.amount.toStringAsFixed(0)} Birr has been confirmed. Full access is active.';
     } else {
-      cardColor = AppColors.error.withOpacity(0.1);
+      cardColor = AppColors.error.withValues(alpha: 0.1);
       iconColor = AppColors.error;
       icon = Icons.error_outline_rounded;
       title = 'Payment Rejected';
@@ -238,7 +261,7 @@ class _SubmitPaymentScreenState extends State<SubmitPaymentScreen> {
       color: cardColor,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: iconColor.withOpacity(0.4)),
+        side: BorderSide(color: iconColor.withValues(alpha: 0.4)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -262,7 +285,7 @@ class _SubmitPaymentScreenState extends State<SubmitPaymentScreen> {
                   const SizedBox(height: 4),
                   Text(
                     message,
-                    style: const TextStyle(fontSize: 13, color: AppColors.textPrimary, height: 1.3),
+                    style: TextStyle(fontSize: 13, color: context.eduColors.textPrimary, height: 1.3),
                   ),
                 ],
               ),
@@ -274,11 +297,14 @@ class _SubmitPaymentScreenState extends State<SubmitPaymentScreen> {
   }
 
   Widget _buildPaymentInstructionsCard() {
+    final priceStr = _systemSettings.subscriptionPrice.toStringAsFixed(0);
+
     return Card(
       elevation: 0,
+      color: context.eduColors.cardBackground,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: const BorderSide(color: AppColors.border),
+        side: BorderSide(color: context.eduColors.border),
       ),
       child: Padding(
         padding: const EdgeInsets.all(18),
@@ -290,27 +316,39 @@ class _SubmitPaymentScreenState extends State<SubmitPaymentScreen> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.1),
+                    color: AppColors.primary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: const Icon(Icons.account_balance_wallet_rounded, color: AppColors.primary, size: 22),
                 ),
                 const SizedBox(width: 12),
-                const Text(
+                Text(
                   'Payment Instructions',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    color: context.eduColors.textPrimary,
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 14),
-            const Text(
-              'Transfer the subscription fee (500 ETB) to one of the accounts below, then upload your screenshot or receipt:',
-              style: TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.4),
+            Text(
+              'Transfer the subscription fee ($priceStr Birr) to one of the accounts below, then upload your screenshot or receipt:',
+              style: TextStyle(fontSize: 13, color: context.eduColors.textSecondary, height: 1.4),
             ),
             const SizedBox(height: 14),
-            _buildAccountRow('Telebirr', '0911000000', 'EduRise'),
-            const Divider(height: 16),
-            _buildAccountRow('CBE Account', '1000123456789', 'EduRise Academy'),
+            _buildAccountRow(
+              'Telebirr',
+              _systemSettings.telebirrNumber,
+              'EduRise',
+            ),
+            Divider(height: 16, color: context.eduColors.border),
+            _buildAccountRow(
+              'CBE Account',
+              _systemSettings.cbeAccount,
+              _systemSettings.cbeAccountName,
+            ),
           ],
         ),
       ),
@@ -318,50 +356,103 @@ class _SubmitPaymentScreenState extends State<SubmitPaymentScreen> {
   }
 
   Widget _buildAccountRow(String bank, String account, String name) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return InkWell(
+      onTap: () {
+        Clipboard.setData(ClipboardData(text: account));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Copied $account to clipboard'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+        child: Row(
           children: [
-            Text(bank, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-            const SizedBox(height: 2),
-            Text(name, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    bank,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: context.eduColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    name,
+                    style: TextStyle(color: context.eduColors.textSecondary, fontSize: 12),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      account,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primary,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.copy_rounded, size: 16, color: AppColors.primary),
+                ],
+              ),
+            ),
           ],
         ),
-        SelectableText(
-          account,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            color: AppColors.primary,
-            fontSize: 15,
-          ),
-        ),
-      ],
+      ),
     );
   }
 
   Widget _buildSubmissionForm() {
+    final priceStr = _systemSettings.subscriptionPrice.toStringAsFixed(0);
+
     return Form(
       key: _formKey,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Submit Proof of Payment',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: context.eduColors.textPrimary,
+            ),
           ),
           const SizedBox(height: 16),
 
           // Payment Method Dropdown
           DropdownButtonFormField<String>(
+            isExpanded: true,
             initialValue: _selectedMethod,
             decoration: const InputDecoration(
               labelText: 'Payment Method',
               prefixIcon: Icon(Icons.payment_rounded),
             ),
             items: _paymentMethods.map((method) {
-              return DropdownMenuItem(value: method, child: Text(method));
+              return DropdownMenuItem(
+                value: method,
+                child: Text(
+                  method,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              );
             }).toList(),
             onChanged: (val) {
               if (val != null) setState(() => _selectedMethod = val);
@@ -371,11 +462,11 @@ class _SubmitPaymentScreenState extends State<SubmitPaymentScreen> {
 
           // Amount
           EduRiseTextField(
-            label: 'Amount Paid (ETB)',
-            hint: '500',
+            label: 'Amount Paid (Birr)',
+            hint: priceStr,
             controller: _amountController,
             keyboardType: TextInputType.number,
-            prefixIcon: const Icon(Icons.attach_money_rounded),
+            prefixIcon: const Icon(Icons.account_balance_wallet_rounded),
             validator: (value) {
               if (value == null || value.trim().isEmpty) {
                 return 'Please enter the amount paid.';
@@ -404,9 +495,13 @@ class _SubmitPaymentScreenState extends State<SubmitPaymentScreen> {
           const SizedBox(height: AppSpacing.lg),
 
           // Receipt File Picker
-          const Text(
+          Text(
             'Receipt Screenshot / Document',
-            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+              color: context.eduColors.textPrimary,
+            ),
           ),
           const SizedBox(height: 8),
 
@@ -417,10 +512,10 @@ class _SubmitPaymentScreenState extends State<SubmitPaymentScreen> {
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: context.eduColors.surfaceSubtle,
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                  color: _selectedReceiptFile != null ? AppColors.primary : AppColors.border,
+                  color: _selectedReceiptFile != null ? AppColors.primary : context.eduColors.border,
                   width: _selectedReceiptFile != null ? 2 : 1,
                 ),
               ),
@@ -428,7 +523,7 @@ class _SubmitPaymentScreenState extends State<SubmitPaymentScreen> {
                 children: [
                   Icon(
                     _selectedReceiptFile != null ? Icons.check_circle_rounded : Icons.cloud_upload_outlined,
-                    color: _selectedReceiptFile != null ? AppColors.primary : AppColors.textSecondary,
+                    color: _selectedReceiptFile != null ? AppColors.primary : context.eduColors.textSecondary,
                     size: 40,
                   ),
                   const SizedBox(height: 8),
@@ -437,10 +532,12 @@ class _SubmitPaymentScreenState extends State<SubmitPaymentScreen> {
                         ? 'Selected: ${_selectedReceiptFile!.path.split(Platform.pathSeparator).last}'
                         : 'Tap to select receipt image or screenshot',
                     textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: _selectedReceiptFile != null ? FontWeight.bold : FontWeight.normal,
-                      color: _selectedReceiptFile != null ? AppColors.primary : AppColors.textSecondary,
+                      color: _selectedReceiptFile != null ? AppColors.primary : context.eduColors.textSecondary,
                     ),
                   ),
                 ],

@@ -29,7 +29,16 @@ class AdminQuestionService {
     Query<Map<String, dynamic>> query = _questionsCollection;
 
     if (grade != null && grade.isNotEmpty && grade != 'all') {
-      query = query.where('grade', isEqualTo: grade);
+      final gradeDigits = grade.replaceAll(RegExp(r'[^0-9]'), '');
+      final gradeInt = int.tryParse(gradeDigits);
+      final gradeVariants = <dynamic>{
+        grade,
+        grade.toLowerCase(),
+        if (gradeDigits.isNotEmpty) gradeDigits,
+        if (gradeInt != null) gradeInt,
+      }.toList();
+
+      query = query.where('grade', whereIn: gradeVariants);
     }
 
     if (stream != null && stream.isNotEmpty && stream != 'all') {
@@ -48,15 +57,41 @@ class AdminQuestionService {
       query = query.where('status', isEqualTo: status);
     }
 
-    final snapshot = await query.limit(limit).get();
+    var snapshot = await query.limit(limit).get();
 
-    var list = snapshot.docs
-        .map((doc) => Question.fromMap(doc.id, doc.data()))
-        .toList();
+    // Fallback if case-sensitive subject query returned empty
+    if (snapshot.docs.isEmpty && subject != null && subject.isNotEmpty && subject != 'all') {
+      Query<Map<String, dynamic>> fallbackQuery = _questionsCollection;
+      if (grade != null && grade.isNotEmpty && grade != 'all') {
+        final gradeDigits = grade.replaceAll(RegExp(r'[^0-9]'), '');
+        final gradeInt = int.tryParse(gradeDigits);
+        final gradeVariants = <dynamic>{
+          grade,
+          grade.toLowerCase(),
+          if (gradeDigits.isNotEmpty) gradeDigits,
+          if (gradeInt != null) gradeInt,
+        }.toList();
+        fallbackQuery = fallbackQuery.where('grade', whereIn: gradeVariants);
+      }
+      fallbackQuery = fallbackQuery.where('subject', isEqualTo: subject.toLowerCase());
+      final fallbackSnapshot = await fallbackQuery.limit(limit).get();
+      if (fallbackSnapshot.docs.isNotEmpty) {
+        snapshot = fallbackSnapshot;
+      }
+    }
+
+    final list = <Question>[];
+    for (final doc in snapshot.docs) {
+      try {
+        list.add(Question.fromMap(doc.id, doc.data()));
+      } catch (_) {
+        // Individual corrupted document will not crash the entire list
+      }
+    }
 
     if (searchQuery != null && searchQuery.trim().isNotEmpty) {
       final q = searchQuery.trim().toLowerCase();
-      list = list.where((item) => item.question.toLowerCase().contains(q)).toList();
+      return list.where((item) => item.question.toLowerCase().contains(q)).toList();
     }
 
     return list;

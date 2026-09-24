@@ -77,8 +77,9 @@ void main() {
 
       // Foundation grades (Grades 9 & 10)
       final foundation = EduRiseSubjects.foundationGrades9And10;
-      expect(foundation.length, 8);
+      expect(foundation.length, 9);
       expect(foundation.contains('Civics'), isFalse);
+      expect(foundation.contains('SAT'), isTrue);
 
       // Practice subjects helper
       final practiceNatural12 = EduRiseSubjects.getPracticeSubjects(stream: 'natural', grade: 'Grade 12');
@@ -90,44 +91,53 @@ void main() {
   });
 
   group('PART 7, 8, 9, 10: Free vs Paid Access Policy Rules', () {
-    test('TEST 3: Grade 12 + 2017 EC is allowed free for platform testing', () {
+    test('TEST 3: Grade 12 + Unit 1 + 2017 EC is allowed free for platform testing', () {
       final isAllowed = AccessService.isFreeAllowedPractice(
         grade: 'Grade 12',
         examYear: 2017,
+        unitNumber: 1,
       );
       expect(isAllowed, isTrue);
+
+      // Unit 2 is locked
+      final isUnit2Allowed = AccessService.isFreeAllowedPractice(
+        grade: 'Grade 12',
+        examYear: 2017,
+        unitNumber: 2,
+      );
+      expect(isUnit2Allowed, isFalse);
     });
 
     test('TEST 4: Any grade other than Grade 12 is LOCKED for free students', () {
       expect(
-        AccessService.isFreeAllowedPractice(grade: 'Grade 9', examYear: 2017),
+        AccessService.isFreeAllowedPractice(grade: 'Grade 9', examYear: 2017, unitNumber: 1),
         isFalse,
       );
       expect(
-        AccessService.isFreeAllowedPractice(grade: 'Grade 10', examYear: 2017),
+        AccessService.isFreeAllowedPractice(grade: 'Grade 10', examYear: 2017, unitNumber: 1),
         isFalse,
       );
       expect(
-        AccessService.isFreeAllowedPractice(grade: 'Grade 11', examYear: 2017),
+        AccessService.isFreeAllowedPractice(grade: 'Grade 11', examYear: 2017, unitNumber: 1),
         isFalse,
       );
     });
 
     test('TEST 5: Any year other than 2017 EC is LOCKED for free students', () {
       expect(
-        AccessService.isFreeAllowedPractice(grade: 'Grade 12', examYear: 2016),
+        AccessService.isFreeAllowedPractice(grade: 'Grade 12', examYear: 2016, unitNumber: 1),
         isFalse,
       );
       expect(
-        AccessService.isFreeAllowedPractice(grade: 'Grade 12', examYear: 2015),
+        AccessService.isFreeAllowedPractice(grade: 'Grade 12', examYear: 2015, unitNumber: 1),
         isFalse,
       );
       expect(
-        AccessService.isFreeAllowedPractice(grade: 'Grade 12', examYear: 2014),
+        AccessService.isFreeAllowedPractice(grade: 'Grade 12', examYear: 2014, unitNumber: 1),
         isFalse,
       );
       expect(
-        AccessService.isFreeAllowedPractice(grade: 'Grade 12', examYear: 2013),
+        AccessService.isFreeAllowedPractice(grade: 'Grade 12', examYear: 2013, unitNumber: 1),
         isFalse,
       );
     });
@@ -139,46 +149,53 @@ void main() {
         required bool isPaid,
         required String grade,
         required int examYear,
+        required int unitNumber,
         required String status,
       }) {
         if (status != 'published') return false;
-        // Free tier exception: Grade 12, 2017 EC
-        if (grade == 'Grade 12' && examYear == 2017) return true;
+        // Free tier exception: Grade 12, Unit 1, 2017 EC
+        if (grade == 'Grade 12' && examYear == 2017 && unitNumber == 1) return true;
         // Paid student can read any published question
         return isPaid;
       }
 
-      // Case A: Free student + Grade 12 + 2017 EC -> ALLOWED
+      // Case A: Free student + Grade 12 + Unit 1 + 2017 EC -> ALLOWED
       expect(
-        canStudentReadQuestion(isPaid: false, grade: 'Grade 12', examYear: 2017, status: 'published'),
+        canStudentReadQuestion(isPaid: false, grade: 'Grade 12', examYear: 2017, unitNumber: 1, status: 'published'),
         isTrue,
       );
 
-      // Case B: Free student + Grade 11 + 2017 EC -> REJECTED
+      // Case A2: Free student + Grade 12 + Unit 2 + 2017 EC -> REJECTED
       expect(
-        canStudentReadQuestion(isPaid: false, grade: 'Grade 11', examYear: 2017, status: 'published'),
+        canStudentReadQuestion(isPaid: false, grade: 'Grade 12', examYear: 2017, unitNumber: 2, status: 'published'),
         isFalse,
       );
 
-      // Case C: Free student + Grade 12 + 2016 EC -> REJECTED
+      // Case B: Free student + Grade 11 + Unit 1 + 2017 EC -> REJECTED
       expect(
-        canStudentReadQuestion(isPaid: false, grade: 'Grade 12', examYear: 2016, status: 'published'),
+        canStudentReadQuestion(isPaid: false, grade: 'Grade 11', examYear: 2017, unitNumber: 1, status: 'published'),
         isFalse,
       );
 
-      // Case D: Paid student + Grade 11 + 2016 EC -> ALLOWED
+      // Case C: Free student + Grade 12 + Unit 1 + 2016 EC -> REJECTED
       expect(
-        canStudentReadQuestion(isPaid: true, grade: 'Grade 11', examYear: 2016, status: 'published'),
+        canStudentReadQuestion(isPaid: false, grade: 'Grade 12', examYear: 2016, unitNumber: 1, status: 'published'),
+        isFalse,
+      );
+
+      // Case D: Paid student + Grade 11 + Unit 2 + 2016 EC -> ALLOWED
+      expect(
+        canStudentReadQuestion(isPaid: true, grade: 'Grade 11', examYear: 2016, unitNumber: 2, status: 'published'),
         isTrue,
       );
 
       // Case E: Draft question -> REJECTED for both free and paid students
       expect(
-        canStudentReadQuestion(isPaid: true, grade: 'Grade 12', examYear: 2017, status: 'draft'),
+        canStudentReadQuestion(isPaid: true, grade: 'Grade 12', examYear: 2017, unitNumber: 1, status: 'draft'),
         isFalse,
       );
       expect(
-        canStudentReadQuestion(isPaid: false, grade: 'Grade 12', examYear: 2017, status: 'draft'),
+        canStudentReadQuestion(isPaid: false, grade: 'Grade 12', examYear: 2017, unitNumber: 1, status: 'draft'),
         isFalse,
       );
     });

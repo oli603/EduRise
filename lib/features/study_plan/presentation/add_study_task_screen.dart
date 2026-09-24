@@ -1,7 +1,9 @@
+import 'package:edurise/core/constants/app_subjects.dart';
 import 'package:edurise/core/theme/app_colors.dart';
 import 'package:edurise/core/theme/app_radius.dart';
 import 'package:edurise/core/theme/app_spacing.dart';
 import 'package:edurise/core/theme/app_text_styles.dart';
+import 'package:edurise/features/profile/data/profile_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -10,7 +12,9 @@ import '../data/study_plan_service.dart';
 import '../data/study_task_model.dart';
 
 class AddStudyTaskScreen extends StatefulWidget {
-  const AddStudyTaskScreen({super.key});
+  final StudyTask? initialTask;
+
+  const AddStudyTaskScreen({super.key, this.initialTask});
 
   @override
   State<AddStudyTaskScreen> createState() => _AddStudyTaskScreenState();
@@ -20,6 +24,7 @@ class _AddStudyTaskScreenState extends State<AddStudyTaskScreen> {
   final _formKey = GlobalKey<FormState>();
 
   final StudyPlanService _studyPlanService = StudyPlanService();
+  final ProfileService _profileService = ProfileService();
 
   final TextEditingController _titleController = TextEditingController();
 
@@ -32,10 +37,54 @@ class _AddStudyTaskScreenState extends State<AddStudyTaskScreen> {
   String _grade = 'Grade 12';
   String _subject = 'Mathematics';
   String _taskType = 'practice';
+  String _studentStream = 'natural';
+  bool _isLoadingProfile = true;
 
   DateTime _scheduledDate = DateTime.now();
 
   bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialTask != null) {
+      final task = widget.initialTask!;
+      _titleController.text = task.title;
+      _unitNumberController.text = task.unitNumber?.toString() ?? '';
+      _unitNameController.text = task.unitName ?? '';
+      _targetCountController.text = task.targetCount?.toString() ?? '';
+      _grade = task.grade;
+      _subject = task.subject;
+      _taskType = task.taskType;
+      _scheduledDate = task.scheduledDate;
+    }
+    _loadStudentStream();
+  }
+
+  Future<void> _loadStudentStream() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        final profile = await _profileService.getProfile(uid: user.uid);
+        if (profile != null && profile.stream.isNotEmpty) {
+          _studentStream = EduRiseSubjects.isSocialStream(profile.stream) ? 'social' : 'natural';
+        }
+      } catch (e) {
+        debugPrint('Error loading student stream for study plan: $e');
+      }
+    }
+
+    final availableSubjects = EduRiseSubjects.getStudyPlanSubjects(stream: _studentStream);
+    if (!availableSubjects.contains(_subject) && availableSubjects.isNotEmpty) {
+      _subject = availableSubjects.first;
+    }
+
+    if (mounted) {
+      setState(() {
+        _isLoadingProfile = false;
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -55,7 +104,7 @@ class _AddStudyTaskScreenState extends State<AddStudyTaskScreen> {
     final selectedDate = await showDatePicker(
       context: context,
       initialDate: _scheduledDate,
-      firstDate: DateTime.now(),
+      firstDate: DateTime.now().subtract(const Duration(days: 1)),
       lastDate: DateTime.now().add(const Duration(days: 365)),
       builder: (context, child) {
         return Theme(
@@ -73,8 +122,40 @@ class _AddStudyTaskScreenState extends State<AddStudyTaskScreen> {
       return;
     }
 
+    if (!mounted) return;
+    final selectedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_scheduledDate),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: Theme.of(
+              context,
+            ).colorScheme.copyWith(primary: AppColors.primary),
+          ),
+          child: child!,
+        );
+      },
+    );
+
     setState(() {
-      _scheduledDate = selectedDate;
+      if (selectedTime != null) {
+        _scheduledDate = DateTime(
+          selectedDate.year,
+          selectedDate.month,
+          selectedDate.day,
+          selectedTime.hour,
+          selectedTime.minute,
+        );
+      } else {
+        _scheduledDate = DateTime(
+          selectedDate.year,
+          selectedDate.month,
+          selectedDate.day,
+          _scheduledDate.hour,
+          _scheduledDate.minute,
+        );
+      }
     });
   }
 
@@ -107,7 +188,7 @@ class _AddStudyTaskScreenState extends State<AddStudyTaskScreen> {
 
     try {
       final task = StudyTask(
-        id: '',
+        id: widget.initialTask?.id ?? '',
         userId: user.uid,
         title: _titleController.text.trim(),
         grade: _grade,
@@ -123,11 +204,15 @@ class _AddStudyTaskScreenState extends State<AddStudyTaskScreen> {
             ? null
             : int.tryParse(_targetCountController.text.trim()),
         scheduledDate: _scheduledDate,
-        isCompleted: false,
-        createdAt: null,
+        isCompleted: widget.initialTask?.isCompleted ?? false,
+        createdAt: widget.initialTask?.createdAt,
       );
 
-      await _studyPlanService.addTask(task);
+      if (widget.initialTask != null) {
+        await _studyPlanService.updateTask(task);
+      } else {
+        await _studyPlanService.addTask(task);
+      }
 
       if (!mounted) return;
 
@@ -155,27 +240,30 @@ class _AddStudyTaskScreenState extends State<AddStudyTaskScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.eduColors;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: colors.scaffoldBackground,
 
       appBar: AppBar(
-        title: const Text(
-          'Create Study Task',
-          style: TextStyle(fontWeight: FontWeight.w700),
+        title: Text(
+          widget.initialTask != null ? 'Edit Study Task' : 'New Study Task',
+          style: const TextStyle(fontWeight: FontWeight.w700),
         ),
       ),
 
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(
-            AppSpacing.md,
-            AppSpacing.sm,
-            AppSpacing.md,
-            AppSpacing.xl,
-          ),
-          children: [
-            _buildHeader(),
+      body: _isLoadingProfile
+          ? const Center(child: CircularProgressIndicator())
+          : Form(
+              key: _formKey,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.md,
+                  AppSpacing.sm,
+                  AppSpacing.md,
+                  AppSpacing.xl,
+                ),
+                children: [
+                  _buildHeader(),
 
             const SizedBox(height: AppSpacing.xl),
 
@@ -302,18 +390,19 @@ class _AddStudyTaskScreenState extends State<AddStudyTaskScreen> {
   // ---------------------------------------------------------------------------
 
   Widget _buildSectionTitle(String title, IconData icon) {
+    final colors = context.eduColors;
     return Row(
       children: [
-        Icon(icon, size: 20, color: AppColors.primary),
+        Icon(icon, size: 20, color: colors.primary),
 
         const SizedBox(width: AppSpacing.sm),
 
         Text(
           title,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w700,
-            color: AppColors.textPrimary,
+            color: colors.textPrimary,
           ),
         ),
       ],
@@ -379,19 +468,18 @@ class _AddStudyTaskScreenState extends State<AddStudyTaskScreen> {
   // ---------------------------------------------------------------------------
 
   Widget _buildSubjectDropdown() {
+    final subjects = EduRiseSubjects.getStudyPlanSubjects(stream: _studentStream);
+    final currentSubject = subjects.contains(_subject) ? _subject : (subjects.isNotEmpty ? subjects.first : null);
+
     return DropdownButtonFormField<String>(
-      initialValue: _subject,
+      initialValue: currentSubject,
       decoration: const InputDecoration(
         labelText: 'Subject',
         prefixIcon: Icon(Icons.menu_book_outlined),
       ),
-      items: const [
-        DropdownMenuItem(value: 'Mathematics', child: Text('Mathematics')),
-        DropdownMenuItem(value: 'Physics', child: Text('Physics')),
-        DropdownMenuItem(value: 'Chemistry', child: Text('Chemistry')),
-        DropdownMenuItem(value: 'Biology', child: Text('Biology')),
-        DropdownMenuItem(value: 'English', child: Text('English')),
-      ],
+      items: subjects.map((sub) {
+        return DropdownMenuItem<String>(value: sub, child: Text(sub));
+      }).toList(),
       onChanged: (value) {
         if (value == null) return;
 
@@ -499,6 +587,7 @@ class _AddStudyTaskScreenState extends State<AddStudyTaskScreen> {
     required IconData icon,
   }) {
     final selected = _taskType == value;
+    final colors = context.eduColors;
 
     return InkWell(
       borderRadius: BorderRadius.circular(AppRadius.md),
@@ -516,12 +605,11 @@ class _AddStudyTaskScreenState extends State<AddStudyTaskScreen> {
         padding: const EdgeInsets.all(AppSpacing.md),
         decoration: BoxDecoration(
           color: selected
-              // ignore: deprecated_member_use
-              ? AppColors.primary.withOpacity(0.08)
-              : AppColors.surface,
+              ? colors.primary.withValues(alpha: 0.12)
+              : colors.cardBackground,
           borderRadius: BorderRadius.circular(AppRadius.md),
           border: Border.all(
-            color: selected ? AppColors.primary : AppColors.border,
+            color: selected ? colors.primary : colors.border,
             width: selected ? 1.5 : 1,
           ),
         ),
@@ -532,14 +620,13 @@ class _AddStudyTaskScreenState extends State<AddStudyTaskScreen> {
               height: 44,
               decoration: BoxDecoration(
                 color: selected
-                    ? AppColors.primary
-                    // ignore: deprecated_member_use
-                    : AppColors.primary.withOpacity(0.08),
+                    ? colors.primary
+                    : colors.primary.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(AppRadius.sm),
               ),
               child: Icon(
                 icon,
-                color: selected ? AppColors.white : AppColors.primary,
+                color: selected ? Colors.white : colors.primary,
               ),
             ),
 
@@ -551,10 +638,10 @@ class _AddStudyTaskScreenState extends State<AddStudyTaskScreen> {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
+                      color: colors.textPrimary,
                     ),
                   ),
 
@@ -562,9 +649,9 @@ class _AddStudyTaskScreenState extends State<AddStudyTaskScreen> {
 
                   Text(
                     subtitle,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
-                      color: AppColors.textSecondary,
+                      color: colors.textSecondary,
                     ),
                   ),
                 ],
@@ -577,9 +664,9 @@ class _AddStudyTaskScreenState extends State<AddStudyTaskScreen> {
               height: 22,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: selected ? AppColors.primary : Colors.transparent,
+                color: selected ? colors.primary : Colors.transparent,
                 border: Border.all(
-                  color: selected ? AppColors.primary : AppColors.border,
+                  color: selected ? colors.primary : colors.border,
                   width: 2,
                 ),
               ),
@@ -587,7 +674,7 @@ class _AddStudyTaskScreenState extends State<AddStudyTaskScreen> {
                   ? const Icon(
                       Icons.check_rounded,
                       size: 15,
-                      color: AppColors.white,
+                      color: Colors.white,
                     )
                   : null,
             ),
@@ -642,15 +729,16 @@ class _AddStudyTaskScreenState extends State<AddStudyTaskScreen> {
   // ---------------------------------------------------------------------------
 
   Widget _buildDateSelector() {
+    final colors = context.eduColors;
     return InkWell(
       borderRadius: BorderRadius.circular(AppRadius.lg),
       onTap: _selectDate,
       child: Container(
         padding: const EdgeInsets.all(AppSpacing.md),
         decoration: BoxDecoration(
-          color: AppColors.surface,
+          color: colors.cardBackground,
           borderRadius: BorderRadius.circular(AppRadius.lg),
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: colors.border),
         ),
         child: Row(
           children: [
@@ -658,13 +746,12 @@ class _AddStudyTaskScreenState extends State<AddStudyTaskScreen> {
               width: 46,
               height: 46,
               decoration: BoxDecoration(
-                // ignore: deprecated_member_use
-                color: AppColors.primary.withOpacity(0.10),
+                color: colors.primary.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(AppRadius.md),
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.calendar_today_rounded,
-                color: AppColors.primary,
+                color: colors.primary,
               ),
             ),
 
@@ -674,11 +761,11 @@ class _AddStudyTaskScreenState extends State<AddStudyTaskScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Scheduled date',
                     style: TextStyle(
                       fontSize: 12,
-                      color: AppColors.textSecondary,
+                      color: colors.textSecondary,
                     ),
                   ),
 
@@ -686,19 +773,19 @@ class _AddStudyTaskScreenState extends State<AddStudyTaskScreen> {
 
                   Text(
                     _formatDate(_scheduledDate),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
+                      color: colors.textPrimary,
                     ),
                   ),
                 ],
               ),
             ),
 
-            const Icon(
+            Icon(
               Icons.chevron_right_rounded,
-              color: AppColors.textSecondary,
+              color: colors.textSecondary,
             ),
           ],
         ),
@@ -711,6 +798,7 @@ class _AddStudyTaskScreenState extends State<AddStudyTaskScreen> {
   // ---------------------------------------------------------------------------
 
   Widget _buildSaveButton() {
+    final isEditing = widget.initialTask != null;
     return SizedBox(
       height: 56,
       child: ElevatedButton.icon(
@@ -725,7 +813,11 @@ class _AddStudyTaskScreenState extends State<AddStudyTaskScreen> {
                 ),
               )
             : const Icon(Icons.check_rounded),
-        label: Text(_isSaving ? 'Creating task...' : 'Create Study Task'),
+        label: Text(
+          _isSaving
+              ? (isEditing ? 'Saving...' : 'Creating task...')
+              : (isEditing ? 'Save Changes' : 'Create Study Task'),
+        ),
       ),
     );
   }
@@ -760,8 +852,12 @@ class _AddStudyTaskScreenState extends State<AddStudyTaskScreen> {
       'December',
     ];
 
+    final hour = date.hour > 12 ? date.hour - 12 : (date.hour == 0 ? 12 : date.hour);
+    final minute = date.minute.toString().padLeft(2, '0');
+    final period = date.hour >= 12 ? 'PM' : 'AM';
+
     return '${weekdays[date.weekday - 1]}, '
         '${months[date.month - 1]} ${date.day}, '
-        '${date.year}';
+        '${date.year} • $hour:$minute $period';
   }
 }

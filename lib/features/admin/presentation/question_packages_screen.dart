@@ -40,11 +40,34 @@ class _QuestionPackagesScreenState extends State<QuestionPackagesScreen> {
     await _reloadPackages();
   }
 
+  void _safeBack() {
+    if (context.canPop()) {
+      context.pop();
+    } else if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    } else {
+      context.go('/admin/dashboard');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Question Packages')),
-      floatingActionButton: FloatingActionButton.extended(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _safeBack();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded),
+            tooltip: 'Back',
+            onPressed: _safeBack,
+          ),
+          title: const Text('Question Packages'),
+        ),
+        floatingActionButton: FloatingActionButton.extended(
         onPressed: _openCreatePackage,
         icon: const Icon(Icons.add),
         label: const Text('Create Package'),
@@ -88,6 +111,7 @@ class _QuestionPackagesScreenState extends State<QuestionPackagesScreen> {
           },
         ),
       ),
+    ),
     );
   }
 }

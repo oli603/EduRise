@@ -118,6 +118,14 @@ class Challenge {
       return value;
     }
 
+    if (value is String) {
+      return DateTime.tryParse(value);
+    }
+
+    if (value is int) {
+      return DateTime.fromMillisecondsSinceEpoch(value);
+    }
+
     return null;
   }
 

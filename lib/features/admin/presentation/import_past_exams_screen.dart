@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../data/import/past_exam_bulk_import_models.dart';
@@ -204,15 +205,22 @@ class _ImportPastExamsScreenState extends State<ImportPastExamsScreen> {
   }
 
   void _showCompletionDialog(BulkImportResult result) {
+    final colors = context.eduColors;
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        title: const Row(
+        backgroundColor: colors.cardBackground,
+        title: Row(
           children: [
-            Icon(Icons.check_circle_rounded, color: Colors.green, size: 28),
-            SizedBox(width: 10),
-            Text('Past Exams Imported! 🎉'),
+            const Icon(Icons.check_circle_rounded, color: AppColors.success, size: 28),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Past Exams Imported! 🎉',
+                style: TextStyle(color: colors.textPrimary),
+              ),
+            ),
           ],
         ),
         content: Column(
@@ -220,17 +228,17 @@ class _ImportPastExamsScreenState extends State<ImportPastExamsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _metricTile('Files processed', '${result.filesProcessed}', Icons.folder_outlined),
-            _metricTile('Exams imported', '${result.importedDetails.length}', Icons.library_books_outlined, color: Colors.green),
-            _metricTile('Questions imported', '${result.questionsImported}', Icons.check_circle_outline, color: Colors.green),
+            _metricTile('Exams imported', '${result.importedDetails.length}', Icons.library_books_outlined, color: AppColors.success),
+            _metricTile('Questions imported', '${result.questionsImported}', Icons.check_circle_outline, color: AppColors.success),
             if (result.failedCount > 0)
-              _metricTile('Failed questions', '${result.failedCount}', Icons.error_outline, color: Colors.red),
+              _metricTile('Failed questions', '${result.failedCount}', Icons.error_outline, color: AppColors.error),
             const SizedBox(height: 12),
             const Divider(),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               '✓ Original question numbers preserved.\n'
               '✓ Q1 → Q2 → ... → Q100 order strictly maintained in Firestore.',
-              style: TextStyle(fontSize: 13, color: Colors.black87, fontWeight: FontWeight.w500),
+              style: TextStyle(fontSize: 13, color: colors.textPrimary, fontWeight: FontWeight.w500),
             ),
           ],
         ),
@@ -245,24 +253,35 @@ class _ImportPastExamsScreenState extends State<ImportPastExamsScreen> {
   }
 
   Widget _metricTile(String label, String value, IconData icon, {Color? color}) {
+    final colors = context.eduColors;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
-          Icon(icon, size: 18, color: color ?? Colors.black54),
+          Icon(icon, size: 18, color: color ?? colors.textSecondary),
           const SizedBox(width: 8),
-          Expanded(child: Text(label, style: const TextStyle(fontSize: 13))),
+          Expanded(child: Text(label, style: TextStyle(fontSize: 13, color: colors.textPrimary))),
           Text(
             value,
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.bold,
-              color: color ?? Colors.black87,
+              color: color ?? colors.textPrimary,
             ),
           ),
         ],
       ),
     );
+  }
+
+  void _safeBack() {
+    if (context.canPop()) {
+      context.pop();
+    } else if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    } else {
+      context.go('/admin/dashboard');
+    }
   }
 
   // ============================================================
@@ -271,37 +290,75 @@ class _ImportPastExamsScreenState extends State<ImportPastExamsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Import Past Entrance Exams'),
-        actions: [
-          if (_files.isNotEmpty)
-            TextButton.icon(
-              onPressed: _isImporting ? null : () => setState(() => _files.clear()),
-              icon: const Icon(Icons.clear_all),
-              label: const Text('Clear Queue'),
-            ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildStep1AddExamFiles(),
-            const SizedBox(height: 32),
-            const Divider(),
-            const SizedBox(height: 24),
-            _buildStep2ValidateAllExams(),
-            const SizedBox(height: 32),
-            const Divider(),
-            const SizedBox(height: 24),
-            _buildStep3ReviewExams(),
-            const SizedBox(height: 32),
-            const Divider(),
-            const SizedBox(height: 24),
-            _buildStep4Import(),
+    final colors = context.eduColors;
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _safeBack();
+      },
+      child: Scaffold(
+        backgroundColor: colors.scaffoldBackground,
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded),
+            tooltip: 'Back',
+            onPressed: _safeBack,
+          ),
+          title: const Text('Import Past Entrance Exams'),
+          actions: [
+            if (_files.isNotEmpty)
+              TextButton.icon(
+                onPressed: _isImporting ? null : () => setState(() => _files.clear()),
+                icon: const Icon(Icons.clear_all),
+                label: const Text('Clear Queue'),
+              ),
           ],
+        ),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Import Type Switcher
+              Container(
+                margin: const EdgeInsets.only(bottom: 24),
+                child: SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(
+                      value: 'practice',
+                      label: Text('Practice Questions'),
+                      icon: Icon(Icons.quiz_outlined),
+                    ),
+                    ButtonSegment(
+                      value: 'past_exams',
+                      label: Text('Past Entrance Exams'),
+                      icon: Icon(Icons.history_edu_rounded),
+                    ),
+                  ],
+                  selected: const {'past_exams'},
+                  onSelectionChanged: (set) {
+                    if (set.contains('practice')) {
+                      context.pushReplacement('/admin/questions/import');
+                    }
+                  },
+                ),
+              ),
+              _buildStep1AddExamFiles(colors),
+              const SizedBox(height: 32),
+              Divider(color: colors.border),
+              const SizedBox(height: 24),
+              _buildStep2ValidateAllExams(colors),
+              const SizedBox(height: 32),
+              Divider(color: colors.border),
+              const SizedBox(height: 24),
+              _buildStep3ReviewExams(colors),
+              const SizedBox(height: 32),
+              Divider(color: colors.border),
+              const SizedBox(height: 24),
+              _buildStep4Import(colors),
+            ],
+          ),
         ),
       ),
     );
@@ -311,7 +368,7 @@ class _ImportPastExamsScreenState extends State<ImportPastExamsScreen> {
   // STEP 1: ADD EXAM FILES
   // ============================================================
 
-  Widget _buildStep1AddExamFiles() {
+  Widget _buildStep1AddExamFiles(EduRiseThemeColors colors) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -319,20 +376,65 @@ class _ImportPastExamsScreenState extends State<ImportPastExamsScreen> {
           children: [
             const CircleAvatar(radius: 14, child: Text('1', style: TextStyle(fontSize: 12))),
             const SizedBox(width: 10),
-            const Expanded(
+            Expanded(
               child: Text(
                 'Step 1 — Add Exam Files',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colors.textPrimary),
               ),
             ),
           ],
         ),
         const SizedBox(height: 8),
-        const Text(
+        Text(
           'Add multiple historical entrance exam files (.xlsx / .csv).',
-          style: TextStyle(color: Colors.black54),
+          style: TextStyle(color: colors.textSecondary),
         ),
         const SizedBox(height: 16),
+
+        // Production Ingestion Guide Card
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          margin: const EdgeInsets.only(bottom: 16),
+          decoration: BoxDecoration(
+            color: colors.primary.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: colors.primary.withValues(alpha: 0.2)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.school_outlined, size: 20, color: colors.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Past Entrance Exam File Requirements & Workflow',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: colors.textPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                '• Supported Formats: Microsoft Excel (.xlsx) or Comma-Separated Values (.csv)\n'
+                '• Exam Identity Columns: year (e.g. 2016), stream (natural/social), subject (e.g. Mathematics), duration_minutes (default: 180 for Math, 120 for others)\n'
+                '• Question Columns: question_number (1..100), question_text, option_a, option_b, option_c, option_d, answer_letter (A/B/C/D), explanation\n'
+                '• Workflow: 1. Select exam file → 2. Validate exam questions & key completeness → 3. Preview exam structure → 4. Save to Past Exam database for student consumption.',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  height: 1.45,
+                  color: colors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
 
         InkWell(
           onTap: _isImporting ? null : _pickFiles,
@@ -341,10 +443,10 @@ class _ImportPastExamsScreenState extends State<ImportPastExamsScreen> {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 20),
             decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.04),
+              color: AppColors.primary.withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: AppColors.primary.withOpacity(0.35),
+                color: AppColors.primary.withValues(alpha: 0.35),
                 width: 1.5,
               ),
             ),
@@ -352,19 +454,25 @@ class _ImportPastExamsScreenState extends State<ImportPastExamsScreen> {
               children: [
                 Icon(Icons.history_edu_rounded, size: 48, color: AppColors.primary),
                 const SizedBox(height: 12),
-                const Text(
+                Text(
                   '📄  ADD EXAM FILE',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colors.textPrimary),
                 ),
                 const SizedBox(height: 6),
-                const Text(
+                Text(
                   '.xlsx  /  .csv',
-                  style: TextStyle(color: Colors.black45, fontWeight: FontWeight.w600),
+                  style: TextStyle(color: colors.textSecondary, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 8),
-                const Text(
+                Text(
                   'Upload full entrance exams with sequential questions (Q1..Q100)',
-                  style: TextStyle(fontSize: 12, color: Colors.black45),
+                  style: TextStyle(fontSize: 12, color: colors.textSecondary),
+                ),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: _isImporting ? null : _pickFiles,
+                  icon: const Icon(Icons.folder_open_rounded, size: 18),
+                  label: const Text('Browse Exam Files'),
                 ),
               ],
             ),
@@ -378,7 +486,7 @@ class _ImportPastExamsScreenState extends State<ImportPastExamsScreen> {
             children: [
               Text(
                 'Exam Files (${_files.length})',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: colors.textPrimary),
               ),
               TextButton.icon(
                 onPressed: _isImporting ? null : _pickFiles,
@@ -390,26 +498,27 @@ class _ImportPastExamsScreenState extends State<ImportPastExamsScreen> {
           const SizedBox(height: 8),
           Card(
             elevation: 0,
+            color: colors.cardBackground,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
-              side: const BorderSide(color: AppColors.border),
+              side: BorderSide(color: colors.border),
             ),
             child: ListView.separated(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: _files.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
+              separatorBuilder: (_, _) => Divider(height: 1, color: colors.border),
               itemBuilder: (context, index) {
                 final file = _files[index];
                 return ListTile(
                   leading: const Icon(Icons.school_outlined, color: AppColors.primary),
                   title: Text(
                     file.name,
-                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: colors.textPrimary),
                   ),
                   subtitle: Text(
                     file.formattedSize,
-                    style: const TextStyle(fontSize: 12),
+                    style: TextStyle(fontSize: 12, color: colors.textSecondary),
                   ),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -417,7 +526,7 @@ class _ImportPastExamsScreenState extends State<ImportPastExamsScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: file.status.color.withOpacity(0.12),
+                          color: file.status.color.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Row(
@@ -439,7 +548,7 @@ class _ImportPastExamsScreenState extends State<ImportPastExamsScreen> {
                       const SizedBox(width: 8),
                       IconButton(
                         tooltip: 'Remove',
-                        icon: const Icon(Icons.close, size: 18, color: Colors.grey),
+                        icon: Icon(Icons.close, size: 18, color: colors.textSecondary),
                         onPressed: _isImporting ? null : () => _removeFile(index),
                       ),
                     ],
@@ -457,7 +566,7 @@ class _ImportPastExamsScreenState extends State<ImportPastExamsScreen> {
   // STEP 2: VALIDATE ALL EXAMS
   // ============================================================
 
-  Widget _buildStep2ValidateAllExams() {
+  Widget _buildStep2ValidateAllExams(EduRiseThemeColors colors) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -465,18 +574,18 @@ class _ImportPastExamsScreenState extends State<ImportPastExamsScreen> {
           children: [
             const CircleAvatar(radius: 14, child: Text('2', style: TextStyle(fontSize: 12))),
             const SizedBox(width: 10),
-            const Expanded(
+            Expanded(
               child: Text(
                 'Step 2 — Validate All Exams',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colors.textPrimary),
               ),
             ),
           ],
         ),
         const SizedBox(height: 8),
-        const Text(
+        Text(
           'Validates exam packages, question counts, numbering gaps, and required fields.',
-          style: TextStyle(color: Colors.black54),
+          style: TextStyle(color: colors.textSecondary),
         ),
         const SizedBox(height: 16),
 
@@ -549,7 +658,7 @@ class _ImportPastExamsScreenState extends State<ImportPastExamsScreen> {
   // STEP 3: REVIEW EXAM PACKAGES & ORDER
   // ============================================================
 
-  Widget _buildStep3ReviewExams() {
+  Widget _buildStep3ReviewExams(EduRiseThemeColors colors) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -557,18 +666,18 @@ class _ImportPastExamsScreenState extends State<ImportPastExamsScreen> {
           children: [
             const CircleAvatar(radius: 14, child: Text('3', style: TextStyle(fontSize: 12))),
             const SizedBox(width: 10),
-            const Expanded(
+            Expanded(
               child: Text(
                 'Step 3 — Review',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colors.textPrimary),
               ),
             ),
           ],
         ),
         const SizedBox(height: 8),
-        const Text(
+        Text(
           'Confirm exam packages and verify question sequence ordering.',
-          style: TextStyle(color: Colors.black54),
+          style: TextStyle(color: colors.textSecondary),
         ),
         const SizedBox(height: 16),
 
@@ -576,16 +685,45 @@ class _ImportPastExamsScreenState extends State<ImportPastExamsScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.amber.shade50,
+              color: Colors.amber.withOpacity(0.12),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.amber.shade200),
+              border: Border.all(color: Colors.amber.withOpacity(0.4)),
             ),
-            child: const Row(
+            child: Row(
               children: [
-                Icon(Icons.info_outline, color: Colors.amber),
-                SizedBox(width: 10),
+                const Icon(Icons.info_outline, color: Colors.amber),
+                const SizedBox(width: 10),
                 Expanded(
-                  child: Text('Please click "Validate All Exams" above to preview the exam packages.'),
+                  child: Text(
+                    'Please click "Validate All Exams" above to preview the exam packages.',
+                    style: TextStyle(color: colors.textPrimary),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else if (_files.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(28),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: colors.surfaceSubtle,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: colors.border),
+            ),
+            child: Column(
+              children: [
+                Icon(Icons.inventory_2_outlined, size: 36, color: colors.textSecondary),
+                const SizedBox(height: 10),
+                Text(
+                  'No exam files selected yet',
+                  style: TextStyle(fontWeight: FontWeight.bold, color: colors.textPrimary),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Add a .xlsx or .csv past exam file in Step 1 to parse, validate, and preview exam packages.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13, color: colors.textSecondary),
                 ),
               ],
             ),
@@ -595,31 +733,38 @@ class _ImportPastExamsScreenState extends State<ImportPastExamsScreen> {
             padding: const EdgeInsets.all(24),
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: Colors.grey.shade50,
+              color: colors.surfaceSubtle,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Text('No exam packages parsed yet.'),
+            child: Text(
+              'No exam packages parsed yet.',
+              style: TextStyle(color: colors.textSecondary),
+            ),
           )
         else ...[
           // Package Summary Table
           Card(
             elevation: 0,
+            color: colors.cardBackground,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
-              side: const BorderSide(color: AppColors.border),
+              side: BorderSide(color: colors.border),
             ),
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: DataTable(
-                headingRowColor: WidgetStateProperty.all(Colors.grey.shade100),
-                columns: const [
-                  DataColumn(label: Text('Year', style: TextStyle(fontWeight: FontWeight.bold))),
-                  DataColumn(label: Text('Subject', style: TextStyle(fontWeight: FontWeight.bold))),
-                  DataColumn(label: Text('Stream', style: TextStyle(fontWeight: FontWeight.bold))),
-                  DataColumn(label: Text('Round', style: TextStyle(fontWeight: FontWeight.bold))),
-                  DataColumn(label: Text('Questions', style: TextStyle(fontWeight: FontWeight.bold))),
-                  DataColumn(label: Text('Status', style: TextStyle(fontWeight: FontWeight.bold))),
-                  DataColumn(label: Text('Select', style: TextStyle(fontWeight: FontWeight.bold))),
+                headingRowColor: WidgetStateProperty.all(colors.surfaceSubtle),
+                dataRowColor: WidgetStateProperty.all(colors.cardBackground),
+                headingTextStyle: TextStyle(fontWeight: FontWeight.bold, color: colors.textPrimary),
+                dataTextStyle: TextStyle(color: colors.textPrimary),
+                columns: [
+                  DataColumn(label: Text('Year', style: TextStyle(fontWeight: FontWeight.bold, color: colors.textPrimary))),
+                  DataColumn(label: Text('Subject', style: TextStyle(fontWeight: FontWeight.bold, color: colors.textPrimary))),
+                  DataColumn(label: Text('Stream', style: TextStyle(fontWeight: FontWeight.bold, color: colors.textPrimary))),
+                  DataColumn(label: Text('Round', style: TextStyle(fontWeight: FontWeight.bold, color: colors.textPrimary))),
+                  DataColumn(label: Text('Questions', style: TextStyle(fontWeight: FontWeight.bold, color: colors.textPrimary))),
+                  DataColumn(label: Text('Status', style: TextStyle(fontWeight: FontWeight.bold, color: colors.textPrimary))),
+                  DataColumn(label: Text('Select', style: TextStyle(fontWeight: FontWeight.bold, color: colors.textPrimary))),
                 ],
                 rows: _packages.map((pkg) {
                   final isSelected = _selectedPackageForPreview == pkg;
@@ -630,11 +775,11 @@ class _ImportPastExamsScreenState extends State<ImportPastExamsScreen> {
                     selected: isSelected,
                     onSelectChanged: (_) => setState(() => _selectedPackageForPreview = pkg),
                     cells: [
-                      DataCell(Text(pkg.year, style: const TextStyle(fontWeight: FontWeight.bold))),
-                      DataCell(Text(pkg.subject)),
-                      DataCell(Text(pkg.stream)),
-                      DataCell(Text(pkg.round ?? '—')),
-                      DataCell(Text('${pkg.totalQuestions}')),
+                      DataCell(Text(pkg.year, style: TextStyle(fontWeight: FontWeight.bold, color: colors.textPrimary))),
+                      DataCell(Text(pkg.subject, style: TextStyle(color: colors.textPrimary))),
+                      DataCell(Text(pkg.stream, style: TextStyle(color: colors.textPrimary))),
+                      DataCell(Text(pkg.round ?? '—', style: TextStyle(color: colors.textPrimary))),
+                      DataCell(Text('${pkg.totalQuestions}', style: TextStyle(color: colors.textPrimary))),
                       DataCell(
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -668,22 +813,22 @@ class _ImportPastExamsScreenState extends State<ImportPastExamsScreen> {
           // Order Preservation Preview
           if (_selectedPackageForPreview != null) ...[
             const SizedBox(height: 20),
-            _buildOrderPreviewCard(_selectedPackageForPreview!),
+            _buildOrderPreviewCard(_selectedPackageForPreview!, colors),
           ],
         ],
       ],
     );
   }
 
-  Widget _buildOrderPreviewCard(PastExamPackageDraft pkg) {
+  Widget _buildOrderPreviewCard(PastExamPackageDraft pkg, EduRiseThemeColors colors) {
     final orderedQuestions = pkg.getOrderedQuestions();
 
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.blue.shade50.withOpacity(0.5),
+        color: colors.cardBackground,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.blue.shade200),
+        border: Border.all(color: colors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -697,14 +842,14 @@ class _ImportPastExamsScreenState extends State<ImportPastExamsScreen> {
                   'Preview: ${pkg.year} ${pkg.subject} ${pkg.round ?? ""}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: colors.textPrimary),
                 ),
               ),
               const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
-                  color: Colors.green.shade100,
+                  color: Colors.green.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Text(
@@ -724,13 +869,13 @@ class _ImportPastExamsScreenState extends State<ImportPastExamsScreen> {
               return Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: colors.surfaceSubtle,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue.shade300),
+                  border: Border.all(color: colors.border),
                 ),
                 child: Text(
                   'Q${q.questionNumber}',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: colors.textPrimary),
                 ),
               );
             }).toList()
@@ -740,33 +885,33 @@ class _ImportPastExamsScreenState extends State<ImportPastExamsScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                         child: Text(
                           '... → Q${orderedQuestions.last.questionNumber} (${orderedQuestions.length} total)',
-                          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black54),
+                          style: TextStyle(fontWeight: FontWeight.bold, color: colors.textSecondary),
                         ),
                       )
                     ]
                   : []),
           ),
           const SizedBox(height: 14),
-          const Divider(),
+          Divider(color: colors.border),
           const SizedBox(height: 6),
-          const Wrap(
+          Wrap(
             spacing: 16,
             runSpacing: 6,
             children: [
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.check_circle_rounded, color: Colors.green, size: 16),
-                  SizedBox(width: 6),
-                  Text('Original question order preserved', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                  const Icon(Icons.check_circle_rounded, color: Colors.green, size: 16),
+                  const SizedBox(width: 6),
+                  Text('Original question order preserved', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colors.textPrimary)),
                 ],
               ),
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.check_circle_rounded, color: Colors.green, size: 16),
-                  SizedBox(width: 6),
-                  Text('Original question numbers preserved', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                  const Icon(Icons.check_circle_rounded, color: Colors.green, size: 16),
+                  const SizedBox(width: 6),
+                  Text('Original question numbers preserved', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colors.textPrimary)),
                 ],
               ),
             ],
@@ -780,7 +925,7 @@ class _ImportPastExamsScreenState extends State<ImportPastExamsScreen> {
   // STEP 4: IMPORT
   // ============================================================
 
-  Widget _buildStep4Import() {
+  Widget _buildStep4Import(EduRiseThemeColors colors) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -788,18 +933,18 @@ class _ImportPastExamsScreenState extends State<ImportPastExamsScreen> {
           children: [
             const CircleAvatar(radius: 14, child: Text('4', style: TextStyle(fontSize: 12))),
             const SizedBox(width: 10),
-            const Expanded(
+            Expanded(
               child: Text(
                 'Step 4 — Import',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colors.textPrimary),
               ),
             ),
           ],
         ),
         const SizedBox(height: 8),
-        const Text(
+        Text(
           'Saves each entrance exam into the "past_exams" collection without reordering.',
-          style: TextStyle(color: Colors.black54),
+          style: TextStyle(color: colors.textSecondary),
         ),
         const SizedBox(height: 16),
 
@@ -807,9 +952,9 @@ class _ImportPastExamsScreenState extends State<ImportPastExamsScreen> {
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.06),
+              color: colors.cardBackground,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppColors.primary.withOpacity(0.2)),
+              border: Border.all(color: colors.border),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -823,7 +968,7 @@ class _ImportPastExamsScreenState extends State<ImportPastExamsScreen> {
                     ),
                     Text(
                       '${(_importProgress * 100).toStringAsFixed(0)}%',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: colors.textPrimary),
                     ),
                   ],
                 ),
@@ -836,7 +981,7 @@ class _ImportPastExamsScreenState extends State<ImportPastExamsScreen> {
                 const SizedBox(height: 10),
                 Text(
                   '$_importedCount / $_totalToImport exams processed. Please do not close this screen.',
-                  style: const TextStyle(fontSize: 12, color: Colors.black54),
+                  style: TextStyle(fontSize: 12, color: colors.textSecondary),
                 ),
               ],
             ),

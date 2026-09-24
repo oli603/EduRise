@@ -46,3 +46,19 @@ app.*.map.json
 
 # Android build artifacts
 /android/build/
+
+# Environment and secrets
+.env
+*.env
+.env.*
+!.env.example
+
+# Python backend
+backend/.venv/
+.venv/
+venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+**/.pytest_cache/

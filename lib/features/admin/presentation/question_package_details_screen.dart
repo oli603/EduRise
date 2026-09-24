@@ -26,11 +26,34 @@ class _QuestionPackageDetailsScreenState
     _packageFuture = _questionPackageService.getPackageById(widget.packageId);
   }
 
+  void _safeBack() {
+    if (context.canPop()) {
+      context.pop();
+    } else if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    } else {
+      context.go('/admin/question-packages');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Package Details')),
-      body: SafeArea(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _safeBack();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded),
+            tooltip: 'Back',
+            onPressed: _safeBack,
+          ),
+          title: const Text('Package Details'),
+        ),
+        body: SafeArea(
         child: FutureBuilder<QuestionPackage?>(
           future: _packageFuture,
           builder: (context, snapshot) {
@@ -65,6 +88,7 @@ class _QuestionPackageDetailsScreenState
           },
         ),
       ),
+    ),
     );
   }
 }

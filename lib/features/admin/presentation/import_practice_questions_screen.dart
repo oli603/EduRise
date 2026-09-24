@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../data/import/practice_bulk_import_models.dart';
@@ -26,6 +27,7 @@ class _ImportPracticeQuestionsScreenState
   int _totalToImport = 0;
 
   BulkImportResult? _lastResult;
+  BulkImportResult? get lastResult => _lastResult;
   String _tableFilter = 'all'; // all, valid, needsReview, invalid
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
@@ -256,23 +258,30 @@ class _ImportPracticeQuestionsScreenState
   // ============================================================
 
   void _showResultDialog(BulkImportResult result) {
+    final colors = context.eduColors;
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
+        backgroundColor: colors.cardBackground,
         title: Row(
           children: [
             Icon(
               result.hasWarningsOrErrors
                   ? Icons.warning_amber_rounded
                   : Icons.check_circle_rounded,
-              color: result.hasWarningsOrErrors ? Colors.orange : Colors.green,
+              color: result.hasWarningsOrErrors ? AppColors.warning : AppColors.success,
               size: 28,
             ),
             const SizedBox(width: 10),
-            Text(result.hasWarningsOrErrors
-                ? 'Import Completed With Warnings'
-                : 'Import Complete! 🎉'),
+            Expanded(
+              child: Text(
+                result.hasWarningsOrErrors
+                    ? 'Import Completed With Warnings'
+                    : 'Import Complete! 🎉',
+                style: TextStyle(color: colors.textPrimary),
+              ),
+            ),
           ],
         ),
         content: SizedBox(
@@ -282,17 +291,17 @@ class _ImportPracticeQuestionsScreenState
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _metricTile('Files Processed', '${result.filesProcessed}', Icons.folder_outlined),
-              _metricTile('Questions Imported', '${result.questionsImported}', Icons.check_circle_outline, color: Colors.green),
+              _metricTile('Questions Imported', '${result.questionsImported}', Icons.check_circle_outline, color: AppColors.success),
               if (result.skippedCount > 0)
-                _metricTile('Skipped (Duplicates)', '${result.skippedCount}', Icons.skip_next_outlined, color: Colors.orange),
+                _metricTile('Skipped (Duplicates)', '${result.skippedCount}', Icons.skip_next_outlined, color: AppColors.warning),
               if (result.failedCount > 0)
-                _metricTile('Failed (Invalid Data)', '${result.failedCount}', Icons.error_outline, color: Colors.red),
+                _metricTile('Failed (Invalid Data)', '${result.failedCount}', Icons.error_outline, color: AppColors.error),
               const SizedBox(height: 16),
               const Divider(),
               const SizedBox(height: 8),
               Text(
                 'Imported ${result.questionsImported} question documents safely into the "questions" collection.',
-                style: const TextStyle(fontSize: 13, color: Colors.black54),
+                style: TextStyle(fontSize: 13, color: colors.textSecondary),
               ),
             ],
           ),
@@ -406,19 +415,20 @@ class _ImportPracticeQuestionsScreenState
   }
 
   Widget _metricTile(String label, String value, IconData icon, {Color? color}) {
+    final colors = context.eduColors;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
-          Icon(icon, size: 20, color: color ?? Colors.black54),
+          Icon(icon, size: 20, color: color ?? colors.textSecondary),
           const SizedBox(width: 8),
-          Expanded(child: Text(label, style: const TextStyle(fontSize: 14))),
+          Expanded(child: Text(label, style: TextStyle(fontSize: 14, color: colors.textPrimary))),
           Text(
             value,
             style: TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.bold,
-              color: color ?? Colors.black87,
+              color: color ?? colors.textPrimary,
             ),
           ),
         ],
@@ -431,20 +441,22 @@ class _ImportPracticeQuestionsScreenState
   // ============================================================
 
   void _inspectRow(PracticeImportRow row) {
+    final colors = context.eduColors;
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
+        backgroundColor: colors.cardBackground,
         title: Row(
           children: [
             Icon(
               row.isValid ? Icons.check_circle_outline : Icons.error_outline,
-              color: row.isValid ? (row.needsReview ? Colors.orange : Colors.green) : Colors.red,
+              color: row.isValid ? (row.needsReview ? AppColors.warning : AppColors.success) : AppColors.error,
             ),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
                 'Row ${row.rowIndex} • ${row.questionId}',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: colors.textPrimary),
               ),
             ),
           ],
@@ -460,20 +472,20 @@ class _ImportPracticeQuestionsScreenState
                     margin: const EdgeInsets.only(bottom: 14),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.red.shade50,
+                      color: AppColors.error.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.red.shade200),
+                      border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
                           'Validation Errors (Must be fixed):',
-                          style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                          style: TextStyle(color: AppColors.error, fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 4),
                         ...row.validationErrors.map(
-                          (err) => Text('✕ $err', style: TextStyle(color: Colors.red.shade900, fontSize: 13)),
+                          (err) => Text('✕ $err', style: TextStyle(color: colors.textPrimary, fontSize: 13)),
                         ),
                       ],
                     ),
@@ -484,20 +496,20 @@ class _ImportPracticeQuestionsScreenState
                     margin: const EdgeInsets.only(bottom: 14),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.orange.shade50,
+                      color: AppColors.warning.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.orange.shade200),
+                      border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
                           'Warnings / Review Items:',
-                          style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+                          style: TextStyle(color: AppColors.warning, fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 4),
                         ...row.validationWarnings.map(
-                          (w) => Text('⚠ $w', style: TextStyle(color: Colors.orange.shade900, fontSize: 13)),
+                          (w) => Text('⚠ $w', style: TextStyle(color: colors.textPrimary, fontSize: 13)),
                         ),
                       ],
                     ),
@@ -506,19 +518,21 @@ class _ImportPracticeQuestionsScreenState
                 Text('${row.grade} • ${row.subject} • Unit ${row.unitNumber} (${row.unitName}) • Year ${row.examYear}',
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.primary)),
                 const SizedBox(height: 12),
-                const Text('Question:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                Text(row.question, style: const TextStyle(fontSize: 14)),
+                Text('Question:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: colors.textSecondary)),
+                const SizedBox(height: 4),
+                Text(row.question, style: TextStyle(fontSize: 14, color: colors.textPrimary)),
                 const SizedBox(height: 14),
-                const Text('Options:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                Text('Options:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: colors.textSecondary)),
                 const SizedBox(height: 6),
-                _optionItem('A', row.optionA, row.correctAnswer == 'A'),
-                _optionItem('B', row.optionB, row.correctAnswer == 'B'),
-                _optionItem('C', row.optionC, row.correctAnswer == 'C'),
-                _optionItem('D', row.optionD, row.correctAnswer == 'D'),
+                _optionItem('A', row.optionA, row.correctAnswer == 'A', colors),
+                _optionItem('B', row.optionB, row.correctAnswer == 'B', colors),
+                _optionItem('C', row.optionC, row.correctAnswer == 'C', colors),
+                _optionItem('D', row.optionD, row.correctAnswer == 'D', colors),
                 const SizedBox(height: 14),
-                const Text('Explanation:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                Text('Explanation:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: colors.textSecondary)),
+                const SizedBox(height: 4),
                 Text(row.explanation.isNotEmpty ? row.explanation : '(None provided)',
-                    style: const TextStyle(fontSize: 13, color: Colors.black87)),
+                    style: TextStyle(fontSize: 13, color: colors.textPrimary)),
               ],
             ),
           ),
@@ -533,15 +547,15 @@ class _ImportPracticeQuestionsScreenState
     );
   }
 
-  Widget _optionItem(String letter, String text, bool isCorrect) {
+  Widget _optionItem(String letter, String text, bool isCorrect, EduRiseThemeColors colors) {
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: isCorrect ? Colors.green.shade50 : Colors.grey.shade50,
+        color: isCorrect ? AppColors.success.withValues(alpha: 0.12) : colors.surfaceSubtle,
         borderRadius: BorderRadius.circular(6),
         border: Border.all(
-          color: isCorrect ? Colors.green : Colors.grey.shade300,
+          color: isCorrect ? AppColors.success : colors.border,
           width: isCorrect ? 1.5 : 1,
         ),
       ),
@@ -549,16 +563,26 @@ class _ImportPracticeQuestionsScreenState
         children: [
           CircleAvatar(
             radius: 12,
-            backgroundColor: isCorrect ? Colors.green : Colors.grey.shade300,
-            child: Text(letter, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isCorrect ? Colors.white : Colors.black87)),
+            backgroundColor: isCorrect ? AppColors.success : colors.border,
+            child: Text(letter, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isCorrect ? Colors.white : colors.textPrimary)),
           ),
           const SizedBox(width: 10),
-          Expanded(child: Text(text, style: TextStyle(fontSize: 13, fontWeight: isCorrect ? FontWeight.bold : FontWeight.normal))),
+          Expanded(child: Text(text, style: TextStyle(fontSize: 13, fontWeight: isCorrect ? FontWeight.bold : FontWeight.normal, color: colors.textPrimary))),
           if (isCorrect)
-            const Text('✓ Correct Answer', style: TextStyle(color: Colors.green, fontSize: 11, fontWeight: FontWeight.bold)),
+            const Text('✓ Correct Answer', style: TextStyle(color: AppColors.success, fontSize: 11, fontWeight: FontWeight.bold)),
         ],
       ),
     );
+  }
+
+  void _safeBack() {
+    if (context.canPop()) {
+      context.pop();
+    } else if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    } else {
+      context.go('/admin/dashboard');
+    }
   }
 
   // ============================================================
@@ -567,39 +591,77 @@ class _ImportPracticeQuestionsScreenState
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Import Practice Questions'),
-        actions: [
-          if (_files.isNotEmpty)
-            TextButton.icon(
-              onPressed: _isImporting ? null : () => setState(() => _files.clear()),
-              icon: const Icon(Icons.clear_all),
-              label: const Text('Clear Queue'),
-            ),
-        ],
-      ),
-      body: SingleChildScrollView(
+    final colors = context.eduColors;
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _safeBack();
+      },
+      child: Scaffold(
+        backgroundColor: colors.scaffoldBackground,
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded),
+            tooltip: 'Back',
+            onPressed: _safeBack,
+          ),
+          title: const Text('Import Practice Questions'),
+          actions: [
+            if (_files.isNotEmpty)
+              TextButton.icon(
+                onPressed: _isImporting ? null : () => setState(() => _files.clear()),
+                icon: const Icon(Icons.clear_all),
+                label: const Text('Clear Queue'),
+              ),
+          ],
+        ),
+        body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildStep1AddFiles(),
+            // Import Type Switcher
+            Container(
+              margin: const EdgeInsets.only(bottom: 24),
+              child: SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(
+                    value: 'practice',
+                    label: Text('Practice Questions'),
+                    icon: Icon(Icons.quiz_outlined),
+                  ),
+                  ButtonSegment(
+                    value: 'past_exams',
+                    label: Text('Past Entrance Exams'),
+                    icon: Icon(Icons.history_edu_rounded),
+                  ),
+                ],
+                selected: const {'practice'},
+                onSelectionChanged: (set) {
+                  if (set.contains('past_exams')) {
+                    context.pushReplacement('/admin/past-exams/import');
+                  }
+                },
+              ),
+            ),
+            _buildStep1AddFiles(colors),
             const SizedBox(height: 32),
             const Divider(),
             const SizedBox(height: 24),
-            _buildStep2ValidateAll(),
+            _buildStep2ValidateAll(colors),
             const SizedBox(height: 32),
             const Divider(),
             const SizedBox(height: 24),
-            _buildStep3Review(),
+            _buildStep3Review(colors),
             const SizedBox(height: 32),
             const Divider(),
             const SizedBox(height: 24),
-            _buildStep4Import(),
+            _buildStep4Import(colors),
           ],
         ),
       ),
+    ),
     );
   }
 
@@ -607,7 +669,7 @@ class _ImportPracticeQuestionsScreenState
   // STEP 1: ADD FILES
   // ============================================================
 
-  Widget _buildStep1AddFiles() {
+  Widget _buildStep1AddFiles(EduRiseThemeColors colors) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -615,20 +677,65 @@ class _ImportPracticeQuestionsScreenState
           children: [
             const CircleAvatar(radius: 14, child: Text('1', style: TextStyle(fontSize: 12))),
             const SizedBox(width: 10),
-            const Expanded(
+            Expanded(
               child: Text(
                 'Step 1 — Add Files',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colors.textPrimary),
               ),
             ),
           ],
         ),
         const SizedBox(height: 8),
-        const Text(
+        Text(
           'Add multiple Excel (.xlsx) or CSV (.csv) files to the queue before importing.',
-          style: TextStyle(color: Colors.black54),
+          style: TextStyle(color: colors.textSecondary),
         ),
         const SizedBox(height: 16),
+
+        // Production Ingestion Guide Card
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          margin: const EdgeInsets.only(bottom: 16),
+          decoration: BoxDecoration(
+            color: colors.primary.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: colors.primary.withValues(alpha: 0.2)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.info_outline_rounded, size: 20, color: colors.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Practice Question File Requirements & Workflow',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: colors.textPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                '• Supported Formats: Microsoft Excel (.xlsx) or Comma-Separated Values (.csv)\n'
+                '• Required Columns: question_text, option_a, option_b, option_c, option_d, answer_letter (A/B/C/D)\n'
+                '• Organization Columns: grade (e.g. Grade 11), stream (natural/social), subject, unit_number, unit_name\n'
+                '• Workflow: 1. Pick file → 2. Validate structure & schema → 3. Preview in table → 4. Import directly to Firestore questions library.',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  height: 1.45,
+                  color: colors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
 
         // Drop / Add Box
         InkWell(
@@ -638,31 +745,37 @@ class _ImportPracticeQuestionsScreenState
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 20),
             decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.04),
+              color: colors.primary.withValues(alpha: 0.06),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: AppColors.primary.withOpacity(0.35),
+                color: colors.primary.withValues(alpha: 0.35),
                 style: BorderStyle.solid,
                 width: 1.5,
               ),
             ),
             child: Column(
               children: [
-                Icon(Icons.cloud_upload_outlined, size: 48, color: AppColors.primary),
+                Icon(Icons.cloud_upload_outlined, size: 48, color: colors.primary),
                 const SizedBox(height: 12),
-                const Text(
+                Text(
                   '📄  ADD FILE',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colors.textPrimary),
                 ),
                 const SizedBox(height: 6),
-                const Text(
+                Text(
                   '.xlsx  /  .csv',
-                  style: TextStyle(color: Colors.black45, fontWeight: FontWeight.w600),
+                  style: TextStyle(color: colors.textSecondary, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 8),
-                const Text(
-                  'Click to select one or multiple files from your computer',
-                  style: TextStyle(fontSize: 12, color: Colors.black45),
+                Text(
+                  'Click to choose practice questions spreadsheet from your device',
+                  style: TextStyle(fontSize: 12, color: colors.textSecondary),
+                ),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: _isImporting ? null : _pickFiles,
+                  icon: const Icon(Icons.folder_open_rounded, size: 18),
+                  label: const Text('Browse Files'),
                 ),
               ],
             ),
@@ -676,7 +789,7 @@ class _ImportPracticeQuestionsScreenState
             children: [
               Text(
                 'Files to Import (${_files.length})',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: colors.textPrimary),
               ),
               TextButton.icon(
                 onPressed: _isImporting ? null : _pickFiles,
@@ -688,15 +801,16 @@ class _ImportPracticeQuestionsScreenState
           const SizedBox(height: 8),
           Card(
             elevation: 0,
+            color: colors.cardBackground,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
-              side: const BorderSide(color: AppColors.border),
+              side: BorderSide(color: colors.border),
             ),
             child: ListView.separated(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: _files.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
+              separatorBuilder: (_, _) => Divider(height: 1, color: colors.border),
               itemBuilder: (context, index) {
                 final file = _files[index];
                 return ListTile(
@@ -715,7 +829,7 @@ class _ImportPracticeQuestionsScreenState
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: file.status.color.withOpacity(0.12),
+                          color: file.status.color.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Row(
@@ -755,7 +869,7 @@ class _ImportPracticeQuestionsScreenState
   // STEP 2: VALIDATE ALL
   // ============================================================
 
-  Widget _buildStep2ValidateAll() {
+  Widget _buildStep2ValidateAll(EduRiseThemeColors colors) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -763,18 +877,18 @@ class _ImportPracticeQuestionsScreenState
           children: [
             const CircleAvatar(radius: 14, child: Text('2', style: TextStyle(fontSize: 12))),
             const SizedBox(width: 10),
-            const Expanded(
+            Expanded(
               child: Text(
                 'Step 2 — Validate All',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colors.textPrimary),
               ),
             ),
           ],
         ),
         const SizedBox(height: 8),
-        const Text(
+        Text(
           'Runs multi-level validation on all queued rows before touching Firestore.',
-          style: TextStyle(color: Colors.black54),
+          style: TextStyle(color: colors.textSecondary),
         ),
         const SizedBox(height: 16),
 
@@ -782,11 +896,11 @@ class _ImportPracticeQuestionsScreenState
           spacing: 12,
           runSpacing: 12,
           children: [
-            _statCard('Files', '${_files.length}', Icons.folder_outlined, Colors.blueGrey),
-            _statCard('Questions found', '$_totalQuestions', Icons.quiz_outlined, Colors.blue),
-            _statCard('✓ Valid questions', '$_validQuestions', Icons.check_circle_outline, Colors.green),
-            _statCard('⚠ Need review', '$_needsReviewQuestions', Icons.warning_amber_rounded, Colors.orange),
-            _statCard('✕ Invalid', '$_invalidQuestions', Icons.error_outline, Colors.red),
+            _statCard('Files', '${_files.length}', Icons.folder_outlined, Colors.blueGrey, colors),
+            _statCard('Questions found', '$_totalQuestions', Icons.quiz_outlined, Colors.blue, colors),
+            _statCard('✓ Valid questions', '$_validQuestions', Icons.check_circle_outline, AppColors.success, colors),
+            _statCard('⚠ Need review', '$_needsReviewQuestions', Icons.warning_amber_rounded, AppColors.warning, colors),
+            _statCard('✕ Invalid', '$_invalidQuestions', Icons.error_outline, AppColors.error, colors),
           ],
         ),
         const SizedBox(height: 20),
@@ -805,14 +919,14 @@ class _ImportPracticeQuestionsScreenState
     );
   }
 
-  Widget _statCard(String label, String value, IconData icon, Color color) {
+  Widget _statCard(String label, String value, IconData icon, Color color, EduRiseThemeColors colors) {
     return Container(
       width: 160,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withValues(alpha: colors.isDark ? 0.15 : 0.08),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withValues(alpha: colors.isDark ? 0.4 : 0.25)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -845,7 +959,7 @@ class _ImportPracticeQuestionsScreenState
   // STEP 3: REVIEW PREVIEW TABLE
   // ============================================================
 
-  Widget _buildStep3Review() {
+  Widget _buildStep3Review(EduRiseThemeColors colors) {
     final rows = _filteredRows;
 
     return Column(
@@ -855,18 +969,18 @@ class _ImportPracticeQuestionsScreenState
           children: [
             const CircleAvatar(radius: 14, child: Text('3', style: TextStyle(fontSize: 12))),
             const SizedBox(width: 10),
-            const Expanded(
+            Expanded(
               child: Text(
                 'Step 3 — Review',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colors.textPrimary),
               ),
             ),
           ],
         ),
         const SizedBox(height: 8),
-        const Text(
+        Text(
           'Inspect individual parsed questions, errors, warnings, and duplicate warnings.',
-          style: TextStyle(color: Colors.black54),
+          style: TextStyle(color: colors.textSecondary),
         ),
         const SizedBox(height: 16),
 
@@ -909,16 +1023,45 @@ class _ImportPracticeQuestionsScreenState
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.amber.shade50,
+              color: AppColors.warning.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.amber.shade200),
+              border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
             ),
-            child: const Row(
+            child: Row(
               children: [
-                Icon(Icons.info_outline, color: Colors.amber),
-                SizedBox(width: 10),
+                const Icon(Icons.info_outline, color: AppColors.warning),
+                const SizedBox(width: 10),
                 Expanded(
-                  child: Text('Please click "Validate All Files" above to populate the preview table.'),
+                  child: Text(
+                    'Please click "Validate All Files" above to populate the preview table.',
+                    style: TextStyle(color: colors.textPrimary),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else if (_files.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(28),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: colors.surfaceSubtle,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: colors.border),
+            ),
+            child: Column(
+              children: [
+                Icon(Icons.table_chart_outlined, size: 36, color: colors.textSecondary),
+                const SizedBox(height: 10),
+                Text(
+                  'No questions parsed yet',
+                  style: TextStyle(fontWeight: FontWeight.bold, color: colors.textPrimary),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Add a .xlsx or .csv practice question file in Step 1 to populate the review and validation preview table.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13, color: colors.textSecondary),
                 ),
               ],
             ),
@@ -928,64 +1071,72 @@ class _ImportPracticeQuestionsScreenState
             padding: const EdgeInsets.all(24),
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: Colors.grey.shade50,
+              color: colors.surfaceSubtle,
               borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: colors.border),
             ),
-            child: const Text('No questions match the current filter or search.'),
+            child: Text(
+              'No questions match the current filter or search.',
+              style: TextStyle(color: colors.textSecondary),
+            ),
           )
         else
           Card(
             elevation: 0,
+            color: colors.cardBackground,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
-              side: const BorderSide(color: AppColors.border),
+              side: BorderSide(color: colors.border),
             ),
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: DataTable(
-                headingRowColor: WidgetStateProperty.all(Colors.grey.shade100),
-                columns: const [
-                  DataColumn(label: Text('Row', style: TextStyle(fontWeight: FontWeight.bold))),
-                  DataColumn(label: Text('Question ID', style: TextStyle(fontWeight: FontWeight.bold))),
-                  DataColumn(label: Text('Grade', style: TextStyle(fontWeight: FontWeight.bold))),
-                  DataColumn(label: Text('Subject', style: TextStyle(fontWeight: FontWeight.bold))),
-                  DataColumn(label: Text('Unit', style: TextStyle(fontWeight: FontWeight.bold))),
-                  DataColumn(label: Text('Year', style: TextStyle(fontWeight: FontWeight.bold))),
-                  DataColumn(label: Text('Answer', style: TextStyle(fontWeight: FontWeight.bold))),
-                  DataColumn(label: Text('Status', style: TextStyle(fontWeight: FontWeight.bold))),
-                  DataColumn(label: Text('Action', style: TextStyle(fontWeight: FontWeight.bold))),
+                headingRowColor: WidgetStateProperty.all(colors.surfaceSubtle),
+                dataRowColor: WidgetStateProperty.all(colors.cardBackground),
+                headingTextStyle: TextStyle(fontWeight: FontWeight.bold, color: colors.textPrimary),
+                dataTextStyle: TextStyle(color: colors.textPrimary),
+                columns: [
+                  DataColumn(label: Text('Row', style: TextStyle(fontWeight: FontWeight.bold, color: colors.textPrimary))),
+                  DataColumn(label: Text('Question ID', style: TextStyle(fontWeight: FontWeight.bold, color: colors.textPrimary))),
+                  DataColumn(label: Text('Grade', style: TextStyle(fontWeight: FontWeight.bold, color: colors.textPrimary))),
+                  DataColumn(label: Text('Subject', style: TextStyle(fontWeight: FontWeight.bold, color: colors.textPrimary))),
+                  DataColumn(label: Text('Unit', style: TextStyle(fontWeight: FontWeight.bold, color: colors.textPrimary))),
+                  DataColumn(label: Text('Year', style: TextStyle(fontWeight: FontWeight.bold, color: colors.textPrimary))),
+                  DataColumn(label: Text('Answer', style: TextStyle(fontWeight: FontWeight.bold, color: colors.textPrimary))),
+                  DataColumn(label: Text('Status', style: TextStyle(fontWeight: FontWeight.bold, color: colors.textPrimary))),
+                  DataColumn(label: Text('Action', style: TextStyle(fontWeight: FontWeight.bold, color: colors.textPrimary))),
                 ],
                 rows: rows.take(100).map((row) {
                   final statusText = !row.isValid
                       ? '✕ Invalid'
                       : (row.needsReview ? '⚠ Review' : '✓ Valid');
                   final statusColor = !row.isValid
-                      ? Colors.red
-                      : (row.needsReview ? Colors.orange : Colors.green);
+                      ? AppColors.error
+                      : (row.needsReview ? AppColors.warning : AppColors.success);
 
                   return DataRow(
                     cells: [
-                      DataCell(Text('${row.rowIndex}')),
+                      DataCell(Text('${row.rowIndex}', style: TextStyle(color: colors.textPrimary))),
                       DataCell(
                         Text(
                           row.questionId,
-                          style: const TextStyle(fontWeight: FontWeight.w600),
+                          style: TextStyle(fontWeight: FontWeight.w600, color: colors.textPrimary),
                         ),
                       ),
-                      DataCell(Text(row.grade)),
-                      DataCell(Text(row.subject)),
-                      DataCell(Text('Unit ${row.unitNumber}')),
-                      DataCell(Text('${row.examYear}')),
+                      DataCell(Text(row.grade, style: TextStyle(color: colors.textPrimary))),
+                      DataCell(Text(row.subject, style: TextStyle(color: colors.textPrimary))),
+                      DataCell(Text('Unit ${row.unitNumber}', style: TextStyle(color: colors.textPrimary))),
+                      DataCell(Text('${row.examYear}', style: TextStyle(color: colors.textPrimary))),
                       DataCell(
                         CircleAvatar(
                           radius: 12,
-                          backgroundColor: Colors.green.shade100,
+                          backgroundColor: AppColors.success.withValues(alpha: 0.15),
                           child: Text(
                             row.correctAnswer,
                             style: const TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.bold,
-                              color: Colors.green,
+                              color: AppColors.success,
                             ),
                           ),
                         ),
@@ -994,7 +1145,7 @@ class _ImportPracticeQuestionsScreenState
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
-                            color: statusColor.withOpacity(0.12),
+                            color: statusColor.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Text(
@@ -1009,7 +1160,7 @@ class _ImportPracticeQuestionsScreenState
                       ),
                       DataCell(
                         IconButton(
-                          icon: const Icon(Icons.remove_red_eye_outlined, size: 18),
+                          icon: Icon(Icons.remove_red_eye_outlined, size: 18, color: colors.primary),
                           tooltip: 'Inspect Row Details',
                           onPressed: () => _inspectRow(row),
                         ),
@@ -1037,7 +1188,7 @@ class _ImportPracticeQuestionsScreenState
   // STEP 4: IMPORT
   // ============================================================
 
-  Widget _buildStep4Import() {
+  Widget _buildStep4Import(EduRiseThemeColors colors) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1045,18 +1196,18 @@ class _ImportPracticeQuestionsScreenState
           children: [
             const CircleAvatar(radius: 14, child: Text('4', style: TextStyle(fontSize: 12))),
             const SizedBox(width: 10),
-            const Expanded(
+            Expanded(
               child: Text(
                 'Step 4 — Import',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colors.textPrimary),
               ),
             ),
           ],
         ),
         const SizedBox(height: 8),
-        const Text(
+        Text(
           'Imports all validated questions into Firestore using batched writes.',
-          style: TextStyle(color: Colors.black54),
+          style: TextStyle(color: colors.textSecondary),
         ),
         const SizedBox(height: 16),
 
@@ -1064,9 +1215,9 @@ class _ImportPracticeQuestionsScreenState
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.06),
+              color: colors.primary.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppColors.primary.withOpacity(0.2)),
+              border: Border.all(color: colors.primary.withValues(alpha: 0.25)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1080,7 +1231,7 @@ class _ImportPracticeQuestionsScreenState
                     ),
                     Text(
                       '${(_importProgress * 100).toStringAsFixed(0)}%',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: colors.textPrimary),
                     ),
                   ],
                 ),
@@ -1093,7 +1244,7 @@ class _ImportPracticeQuestionsScreenState
                 const SizedBox(height: 10),
                 Text(
                   '$_importedCount / $_totalToImport questions processed. Please do not close this screen.',
-                  style: const TextStyle(fontSize: 12, color: Colors.black54),
+                  style: TextStyle(fontSize: 12, color: colors.textSecondary),
                 ),
               ],
             ),

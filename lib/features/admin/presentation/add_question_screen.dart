@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../practice/data/question_model.dart';
 import '../../practice/data/question_service.dart';
@@ -347,16 +348,39 @@ class _AddQuestionScreenState extends State<AddQuestionScreen> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  void _safeBack() {
+    if (context.canPop()) {
+      context.pop();
+    } else if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    } else {
+      context.go('/admin/dashboard');
+    }
+  }
+
   // ============================================================
   // BUILD
   // ============================================================
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Add Practice Questions')),
-      body: SafeArea(
-        child: Form(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _safeBack();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded),
+            tooltip: 'Back',
+            onPressed: _safeBack,
+          ),
+          title: const Text('Add Practice Questions'),
+        ),
+        body: SafeArea(
+          child: Form(
           key: _formKey,
           child: ListView(
             padding: const EdgeInsets.all(24),
@@ -595,6 +619,7 @@ class _AddQuestionScreenState extends State<AddQuestionScreen> {
           ),
         ),
       ),
+    ),
     );
   }
 

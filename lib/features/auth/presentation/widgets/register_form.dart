@@ -1,15 +1,17 @@
-import 'package:edurise/features/auth/data/auth_service.dart';
 import 'package:flutter/material.dart';
-
-import '../../../../core/widgets/edurise_text_field.dart';
-import '../../../../core/widgets/primary_button.dart';
-import '../../../../core/widgets/secondary_button.dart';
 import 'package:go_router/go_router.dart';
-import 'package:edurise/core/theme/app_spacing.dart';
-import 'package:edurise/features/profile_setup/data/profile_service.dart';
+
+import '../../../../core/auth/role_service.dart';
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/edurise_text_field.dart';
+import '../../../../core/widgets/google_sign_in_button.dart';
+import '../../../../core/widgets/primary_button.dart';
+import 'package:edurise/features/auth/data/auth_service.dart';
 
 class RegisterForm extends StatefulWidget {
-  const RegisterForm({super.key});
+  const RegisterForm({super.key, this.stream = ''});
+
+  final String stream;
 
   @override
   State<RegisterForm> createState() => _RegisterFormState();
@@ -23,15 +25,30 @@ class _RegisterFormState extends State<RegisterForm> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final AuthService _authService = AuthService();
-  final ProfileService _profileService = ProfileService();
 
-  // ignore: prefer_final_fields
   bool _hidePassword = true;
-  // ignore: prefer_final_fields
   bool _hideConfirmPassword = true;
-
   bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
+
+  void _navigateToDestination(String destination) {
+    if (destination == '/profile-setup' && widget.stream.isNotEmpty) {
+      context.go('/profile-setup?stream=${Uri.encodeComponent(widget.stream)}');
+    } else {
+      context.go(destination);
+    }
+  }
+
   Future<void> _googleSignIn() async {
+    if (_isLoading) return;
     setState(() {
       _isLoading = true;
     });
@@ -40,40 +57,39 @@ class _RegisterFormState extends State<RegisterForm> {
 
     if (!mounted) return;
 
-    setState(() {
-      _isLoading = false;
-    });
-
     if (!result.isSuccess) {
+      setState(() {
+        _isLoading = false;
+      });
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(result.message)));
-
       return;
     }
 
     try {
-      final exists = await _profileService.profileExists();
-
+      final destination = await RoleService.resolvePostAuthRoute(forceRefresh: true);
       if (!mounted) return;
-
-      if (exists) {
-        context.go('/home');
-      } else {
-        context.go('/profile-setup');
-      }
+      setState(() {
+        _isLoading = false;
+      });
+      _navigateToDestination(destination);
     } catch (e) {
       if (!mounted) return;
-
+      setState(() {
+        _isLoading = false;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Unable to check your profile. Please try again.'),
+          content: Text('Unable to complete sign in. Please try again.'),
         ),
       );
     }
   }
 
   Future<void> _register() async {
+    if (_isLoading) return;
+
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -85,16 +101,20 @@ class _RegisterFormState extends State<RegisterForm> {
     final result = await _authService.registerWithEmail(
       email: _emailController.text,
       password: _passwordController.text,
+      name: _nameController.text.trim(),
     );
+
+    if (!mounted) return;
 
     setState(() {
       _isLoading = false;
     });
 
-    if (!mounted) return;
-
     if (result.isSuccess) {
-      context.go('/verify-email');
+      final streamQuery = widget.stream.isNotEmpty
+          ? '?stream=${Uri.encodeComponent(widget.stream)}'
+          : '';
+      context.go('/verify-email$streamQuery');
     } else {
       ScaffoldMessenger.of(
         context,
@@ -103,24 +123,22 @@ class _RegisterFormState extends State<RegisterForm> {
   }
 
   @override
-  void dispose() {
-    _nameController.dispose();
-    _emailController.dispose();
-    _passwordController.dispose();
-    _confirmPasswordController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final colors = context.eduColors;
+
     return Form(
       key: _formKey,
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           EduRiseTextField(
             controller: _nameController,
             label: "Full Name",
             hint: "Enter your full name",
+            textInputAction: TextInputAction.next,
+            textCapitalization: TextCapitalization.words,
+            autofillHints: const [AutofillHints.name],
+            enabled: !_isLoading,
             validator: (value) {
               if (value == null || value.trim().isEmpty) {
                 return "Please enter your full name.";
@@ -134,12 +152,16 @@ class _RegisterFormState extends State<RegisterForm> {
             },
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 12),
 
           EduRiseTextField(
             controller: _emailController,
             label: "Email",
             hint: "Enter your email",
+            keyboardType: TextInputType.emailAddress,
+            textInputAction: TextInputAction.next,
+            autofillHints: const [AutofillHints.email],
+            enabled: !_isLoading,
             validator: (value) {
               if (value == null || value.trim().isEmpty) {
                 return "Please enter your email.";
@@ -155,13 +177,17 @@ class _RegisterFormState extends State<RegisterForm> {
             },
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 12),
 
           EduRiseTextField(
             controller: _passwordController,
             label: "Password",
             hint: "Create a password",
+            helperText: "Must be at least 6 characters",
             obscureText: _hidePassword,
+            textInputAction: TextInputAction.next,
+            autofillHints: const [AutofillHints.newPassword],
+            enabled: !_isLoading,
             validator: (value) {
               if (value == null || value.isEmpty) {
                 return "Please create a password.";
@@ -187,13 +213,17 @@ class _RegisterFormState extends State<RegisterForm> {
             ),
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 12),
 
           EduRiseTextField(
             controller: _confirmPasswordController,
             label: "Confirm Password",
             hint: "Confirm your password",
             obscureText: _hideConfirmPassword,
+            textInputAction: TextInputAction.done,
+            autofillHints: const [AutofillHints.newPassword],
+            enabled: !_isLoading,
+            onFieldSubmitted: (_) => _register(),
             validator: (value) {
               if (value == null || value.isEmpty) {
                 return "Please confirm your password.";
@@ -219,44 +249,63 @@ class _RegisterFormState extends State<RegisterForm> {
             ),
           ),
 
-          const SizedBox(height: 30),
+          const SizedBox(height: 16),
 
           PrimaryButton(
             text: _isLoading ? "Creating..." : "Create Account",
             onPressed: _isLoading ? null : _register,
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 12),
 
           Row(
-            children: const [
-              Expanded(child: Divider()),
-
+            children: [
+              const Expanded(child: Divider()),
               Padding(
-                padding: EdgeInsets.symmetric(horizontal: 12),
-                child: Text("OR"),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Text(
+                  "OR",
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: colors.textMuted,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
-
-              Expanded(child: Divider()),
+              const Expanded(child: Divider()),
             ],
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 12),
 
-          SecondaryButton(
-            text: _isLoading ? "Signing in..." : "Continue with Google",
+          GoogleSignInButton(
+            isLoading: _isLoading,
             onPressed: _isLoading ? null : _googleSignIn,
           ),
-          SizedBox(height: AppSpacing.lg),
+          const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Text("Already have an account?"),
+              Text(
+                "Already have an account?",
+                style: TextStyle(
+                  fontSize: 13,
+                  color: colors.textSecondary,
+                ),
+              ),
               TextButton(
-                onPressed: () {
-                  context.go('/login');
-                },
-                child: const Text("Sign In"),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                ),
+                onPressed: _isLoading
+                    ? null
+                    : () {
+                        final streamQuery = widget.stream.isNotEmpty
+                            ? '?stream=${Uri.encodeComponent(widget.stream)}'
+                            : '';
+                        context.go('/login$streamQuery');
+                      },
+                child: const Text("Sign In", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
               ),
             ],
           ),

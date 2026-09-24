@@ -1,206 +1,189 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import 'package:edurise/features/admin/data/admin_service.dart';
-import 'package:edurise/features/home/widgets/greeting_section.dart';
-import 'package:edurise/features/home/widgets/quick_access_section.dart';
+import '../../../core/auth/role_service.dart';
+import '../../../core/offline/models/student_profile_record.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_spacing.dart';
+import '../../../core/widgets/edurise_empty_state.dart';
+import '../../../core/widgets/edurise_error_state.dart';
+import '../../../core/widgets/edurise_loading_state.dart';
+import '../../profile/data/profile_service.dart';
+import '../widgets/greeting_section.dart';
+import '../widgets/hero_action_card.dart';
+import '../widgets/learning_progress_section.dart';
+import '../widgets/quick_access_section.dart';
+import '../widgets/today_challenge_section.dart';
+import '../widgets/today_plan_section.dart';
 
+/// The central Home screen for EduRise students.
+///
+/// Combines personalized student greeting, learning hero call-to-action,
+/// live practice progress, today's study plan tasks, daily challenges,
+/// and direct Quick Access navigation with full offline support.
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final ProfileService? profileService;
+
+  const HomeScreen({
+    super.key,
+    this.profileService,
+  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  late Future<DocumentSnapshot<Map<String, dynamic>>?> _profileFuture;
+  late Future<StudentProfileRecord?> _profileFuture;
+  late final ProfileService _profileService;
 
   @override
   void initState() {
     super.initState();
+    _profileService = widget.profileService ?? ProfileService();
     _loadProfile();
   }
 
-  void _loadProfile() {
-    _profileFuture = _getStudentProfile();
+  void _loadProfile({bool forceRefresh = false}) {
+    _profileFuture = _profileService.getProfile(forceRefresh: forceRefresh);
   }
 
-  Future<DocumentSnapshot<Map<String, dynamic>>?> _getStudentProfile() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      return null;
-    }
-
-    try {
-      return await FirebaseFirestore.instance
-          .collection('students')
-          .doc(user.uid)
-          .get();
-    } catch (e) {
-      debugPrint('HomeScreen student profile fetch error: $e');
-      rethrow;
-    }
+  Future<void> _handleRefresh() async {
+    setState(() {
+      _loadProfile(forceRefresh: true);
+    });
+    await _profileFuture;
   }
 
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>?>(
+      child: FutureBuilder<StudentProfileRecord?>(
         future: _profileFuture,
         builder: (context, snapshot) {
           // ==================================================
-          // LOADING
+          // 1. CALM BRANDED LOADING STATE
           // ==================================================
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return const EduRiseLoadingState(
+              message: 'Preparing your learning dashboard...',
+            );
           }
 
           // ==================================================
-          // ERROR STATE
+          // 2. ERROR STATE
           // ==================================================
           if (snapshot.hasError) {
-            if (AdminService.isAuthorizedAdmin) {
-              return ListView(
-                padding: const EdgeInsets.all(24),
-                children: [
-                  GreetingSection(
-                    studentName: AdminService.isFounder
-                        ? 'Founder (Admin Preview)'
-                        : 'Admin (Preview)',
-                  ),
-                  const SizedBox(height: 30),
-                  const QuickAccessSection(),
-                  const SizedBox(height: 30),
-                ],
-              );
+            if (RoleService.isAuthorizedAdmin) {
+              return _buildAdminPreview(context);
             }
 
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.error_outline_rounded, size: 56, color: Colors.amber),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Unable to load your profile.',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Please check your connection or complete your profile setup.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.black54),
-                    ),
-                    const SizedBox(height: 20),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        OutlinedButton.icon(
-                          onPressed: () {
-                            setState(() {
-                              _loadProfile();
-                            });
-                          },
-                          icon: const Icon(Icons.refresh_rounded),
-                          label: const Text('Retry'),
-                        ),
-                        const SizedBox(width: 12),
-                        FilledButton.icon(
-                          onPressed: () => context.go('/profile-setup'),
-                          icon: const Icon(Icons.person_add_rounded),
-                          label: const Text('Set Up Profile'),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
+            return EduRiseErrorState(
+              title: 'Unable to Load Profile',
+              message:
+                  'Please check your network connection or verify your profile setup.',
+              retryLabel: 'Retry',
+              onRetry: () {
+                setState(() {
+                  _loadProfile(forceRefresh: true);
+                });
+              },
             );
           }
 
           // ==================================================
-          // PROFILE NOT FOUND STATE
+          // 3. PROFILE NOT FOUND / ONBOARDING REQUIRED
           // ==================================================
-          final doc = snapshot.data;
-          if (doc == null || !doc.exists) {
-            if (AdminService.isAuthorizedAdmin) {
-              return ListView(
-                padding: const EdgeInsets.all(24),
-                children: [
-                  GreetingSection(
-                    studentName: AdminService.isFounder
-                        ? 'Founder (Admin Preview)'
-                        : 'Admin (Preview)',
-                  ),
-                  const SizedBox(height: 30),
-                  const QuickAccessSection(),
-                  const SizedBox(height: 30),
-                ],
-              );
+          final profile = snapshot.data;
+          if (profile == null) {
+            if (RoleService.isAuthorizedAdmin) {
+              return _buildAdminPreview(context);
             }
 
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.school_outlined, size: 64, color: Colors.indigo),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Welcome to EduRise!',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Please complete your personalization to start practicing.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.black54),
-                    ),
-                    const SizedBox(height: 24),
-                    FilledButton.icon(
-                      onPressed: () => context.go('/profile-setup'),
-                      icon: const Icon(Icons.arrow_forward_rounded),
-                      label: const Text('Complete Profile Setup'),
-                    ),
-                  ],
-                ),
-              ),
+            return EduRiseEmptyState(
+              icon: Icons.school_outlined,
+              title: 'Welcome to EduRise!',
+              message:
+                  'Complete your grade and stream setup to access tailored practice questions and study plans.',
+              actionLabel: 'Complete Profile Setup',
+              onAction: () => context.go('/profile-setup'),
             );
           }
 
           // ==================================================
-          // STUDENT DATA & NORMAL DASHBOARD
+          // 4. LOADED STUDENT DASHBOARD
           // ==================================================
-          final data = doc.data();
-          final studentName = data?['name'] as String? ??
-              data?['fullName'] as String? ??
-              'Student';
+          final fallbackName = Firebase.apps.isNotEmpty
+              ? (FirebaseAuth.instance.currentUser?.displayName ?? 'Student')
+              : 'Student';
+          final studentName = profile.name.trim().isNotEmpty
+              ? profile.name.trim()
+              : fallbackName;
 
-          return ListView(
-            padding: const EdgeInsets.all(24),
-            children: [
-              // ------------------------------------------------
-              // GREETING
-              // ------------------------------------------------
-              GreetingSection(studentName: studentName),
+          return RefreshIndicator(
+            onRefresh: _handleRefresh,
+            color: Theme.of(context).brightness == Brightness.dark
+                ? AppColors.primaryForDark
+                : AppColors.primary,
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              children: [
+                // 1. PERSONALIZED GREETING & NOTIFICATIONS
+                GreetingSection(studentName: studentName),
 
-              const SizedBox(height: 30),
+                const SizedBox(height: AppSpacing.lg),
 
-              // ------------------------------------------------
-              // QUICK ACCESS
-              // ------------------------------------------------
-              const QuickAccessSection(),
+                // 2. PRIMARY LEARNING HERO ("WHAT TO LEARN NEXT")
+                HeroActionCard(profile: profile),
 
-              const SizedBox(height: 30),
-            ],
+                const SizedBox(height: AppSpacing.xl),
+
+                // 3. REAL-TIME LEARNING PROGRESS SNAPSHOT
+                const LearningProgressSection(),
+
+                const SizedBox(height: AppSpacing.xl),
+
+                // 4. TODAY'S STUDY PLAN PREVIEW
+                TodayPlanSection(userId: profile.uid),
+
+                const SizedBox(height: AppSpacing.xl),
+
+                // 5. QUICK ACCESS ACTION GRID
+                QuickAccessSection(studentGrade: profile.grade),
+
+                const SizedBox(height: AppSpacing.xl),
+
+                // 6. TODAY'S DAILY CHALLENGE
+                TodayChallengeSection(userId: profile.uid),
+
+                const SizedBox(height: AppSpacing.xxl),
+              ],
+            ),
           );
         },
       ),
+    );
+  }
+
+  Widget _buildAdminPreview(BuildContext context) {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(20),
+      children: [
+        GreetingSection(
+          studentName: RoleService.isFounder
+              ? 'Founder (Admin Preview)'
+              : 'Admin (Preview)',
+        ),
+        const SizedBox(height: AppSpacing.lg),
+        const QuickAccessSection(),
+        const SizedBox(height: AppSpacing.xxl),
+      ],
     );
   }
 }

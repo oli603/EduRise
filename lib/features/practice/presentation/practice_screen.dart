@@ -1,12 +1,17 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import 'package:edurise/core/auth/access_service.dart';
+import 'package:edurise/core/offline/connectivity_service.dart';
+import 'package:edurise/core/theme/app_colors.dart';
 import 'package:edurise/core/widgets/access_locked_dialog.dart';
 import 'package:edurise/features/practice/data/question_model.dart';
 import 'package:edurise/features/practice/data/question_service.dart';
 import 'package:edurise/features/practice/data/practice_service.dart';
 import '../../challenges/data/challenge_service.dart';
+import '../../coach/presentation/widgets/explain_more_sheet.dart';
+import '../../coach/presentation/widgets/report_question_dialog.dart';
 
 import 'practice_result_screen.dart';
 
@@ -80,6 +85,7 @@ class _PracticeScreenState extends State<PracticeScreen> {
       final canAccess = await AccessService.canAccessPractice(
         grade: widget.grade,
         examYear: widget.examYear ?? 0,
+        unitNumber: widget.unitNumber,
       );
 
       if (!canAccess) {
@@ -138,8 +144,28 @@ class _PracticeScreenState extends State<PracticeScreen> {
   }
 
   // ============================================================
-  // SELECT ANSWER
+  // SELECT ANSWER & HELPERS
   // ============================================================
+
+  String _resolveCorrectLetter(Question question) {
+    final raw = question.correctAnswer.trim();
+    if (raw.length == 1) {
+      final upper = raw.toUpperCase();
+      if (upper == 'A' || upper == 'B' || upper == 'C' || upper == 'D') {
+        return upper;
+      }
+    }
+    final match = RegExp(r'^[\(\[]?([A-Da-d])[\)\]\.\:]?').firstMatch(raw);
+    if (match != null) {
+      return match.group(1)!.toUpperCase();
+    }
+    for (int i = 0; i < question.options.length; i++) {
+      if (question.options[i].trim().toLowerCase() == raw.toLowerCase()) {
+        return String.fromCharCode(65 + i);
+      }
+    }
+    return raw.isNotEmpty ? raw.substring(0, 1).toUpperCase() : 'A';
+  }
 
   void _selectAnswer(String answer) {
     if (_answered) {
@@ -147,12 +173,11 @@ class _PracticeScreenState extends State<PracticeScreen> {
     }
 
     final question = _questions[_currentIndex];
-
-    final isCorrect = answer == question.correctAnswer;
+    final resolvedCorrect = _resolveCorrectLetter(question);
+    final isCorrect = answer.toUpperCase() == resolvedCorrect;
 
     setState(() {
       _selectedAnswers[_currentIndex] = answer;
-
       _answered = true;
 
       if (isCorrect) {
@@ -173,10 +198,11 @@ class _PracticeScreenState extends State<PracticeScreen> {
         return;
       }
 
-      _isCompletingPractice = true;
+      setState(() {
+        _isCompletingPractice = true;
+      });
 
       _showResult();
-
       return;
     }
 
@@ -233,7 +259,7 @@ class _PracticeScreenState extends State<PracticeScreen> {
         questionIds: questionIds,
         correctQuestionIds: correctQuestionIds,
         questionResults: questionResults,
-      );
+      ).timeout(const Duration(seconds: 3));
 
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
@@ -244,7 +270,7 @@ class _PracticeScreenState extends State<PracticeScreen> {
           grade: widget.grade,
           unitNumber: widget.unitNumber,
           count: total,
-        );
+        ).timeout(const Duration(seconds: 2));
       }
     } catch (e) {
       debugPrint('PRACTICE RESULT SAVE ERROR: $e');
@@ -324,6 +350,8 @@ class _PracticeScreenState extends State<PracticeScreen> {
     // ----------------------------------------------------------
 
     if (_questions.isEmpty) {
+      final isOffline = ConnectivityService().isOffline;
+
       return Scaffold(
         appBar: AppBar(title: Text(widget.unitName)),
         body: Center(
@@ -332,30 +360,46 @@ class _PracticeScreenState extends State<PracticeScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(
-                  Icons.search_off_rounded,
+                Icon(
+                  isOffline ? Icons.cloud_off_rounded : Icons.search_off_rounded,
                   size: 64,
-                  color: Colors.grey,
+                  color: isOffline ? Colors.orange : Colors.grey,
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'No questions available',
+                  isOffline ? 'Not Available Offline' : 'No questions available',
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.bold,
                       ),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'No questions are currently available for ${widget.grade} ${widget.subject} Unit ${widget.unitNumber}${widget.examYear != null && widget.examYear! > 0 ? ' (${widget.examYear} EC)' : ''}.',
+                  isOffline
+                      ? 'This practice package (${widget.grade} ${widget.subject} Unit ${widget.unitNumber}) is not downloaded for offline practice. Connect to the internet or open a downloaded package from Downloads.'
+                      : 'No questions are currently available for ${widget.grade} ${widget.subject} Unit ${widget.unitNumber}${widget.examYear != null && widget.examYear! > 0 ? ' (${widget.examYear} EC)' : ''}.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.grey.shade600, height: 1.4),
                 ),
                 const SizedBox(height: 24),
-                FilledButton.icon(
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.arrow_back_rounded),
-                  label: const Text('Choose Another Filter'),
-                ),
+                if (isOffline) ...[
+                  FilledButton.icon(
+                    onPressed: () => context.push('/downloads'),
+                    icon: const Icon(Icons.download_done_rounded),
+                    label: const Text('Go to Downloads'),
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.arrow_back_rounded),
+                    label: const Text('Go Back'),
+                  ),
+                ] else ...[
+                  FilledButton.icon(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.arrow_back_rounded),
+                    label: const Text('Choose Another Filter'),
+                  ),
+                ],
               ],
             ),
           ),
@@ -432,12 +476,22 @@ class _PracticeScreenState extends State<PracticeScreen> {
                 height: 54,
                 width: double.infinity,
                 child: FilledButton(
-                  onPressed: _nextQuestion,
-                  child: Text(
-                    _currentIndex == _questions.length - 1
-                        ? 'Finish Practice'
-                        : 'Next Question',
-                  ),
+                  onPressed: _isCompletingPractice ? null : _nextQuestion,
+                  child: _isCompletingPractice
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2.5,
+                          ),
+                        )
+                      : Text(
+                          _currentIndex == _questions.length - 1
+                              ? 'Finish Practice'
+                              : 'Next Question',
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
                 ),
               ),
             ],
@@ -608,33 +662,34 @@ class _PracticeScreenState extends State<PracticeScreen> {
     required String correctAnswer,
   }) {
     final letter = String.fromCharCode(65 + index);
-
     final selectedAnswer = _selectedAnswers[_currentIndex];
-
     final isSelected = selectedAnswer == letter;
+    final resolvedCorrect = _resolveCorrectLetter(_questions[_currentIndex]);
 
-    final isCorrect = _answered && letter == correctAnswer;
+    final isCorrect = _answered && letter == resolvedCorrect;
+    final isWrong = _answered && isSelected && letter != resolvedCorrect;
 
-    final isWrong = _answered && isSelected && letter != correctAnswer;
+    Color backgroundColor = context.eduColors.cardBackground;
+    Color borderColor = context.eduColors.border;
+    Color textColor = context.eduColors.textPrimary;
+    Widget? trailingBadge;
 
-    Color backgroundColor = Colors.grey.shade100;
-    Color borderColor = Colors.grey.shade300;
-    Color textColor = Colors.black87;
-
-    if (isCorrect) {
-      backgroundColor = Colors.green.shade50;
-      borderColor = Colors.green;
-      textColor = Colors.green.shade800;
-    } else if (isWrong) {
-      backgroundColor = Colors.red.shade50;
-      borderColor = Colors.red;
-      textColor = Colors.red.shade800;
+    if (_answered) {
+      if (isCorrect) {
+        backgroundColor = AppColors.success.withValues(alpha: 0.10);
+        borderColor = AppColors.success;
+        textColor = context.eduColors.textPrimary;
+        trailingBadge = const Icon(Icons.check_circle_rounded, color: AppColors.success, size: 22);
+      } else if (isWrong) {
+        backgroundColor = AppColors.error.withValues(alpha: 0.10);
+        borderColor = AppColors.error;
+        textColor = context.eduColors.textPrimary;
+        trailingBadge = const Icon(Icons.cancel_rounded, color: AppColors.error, size: 22);
+      }
     } else if (isSelected) {
-      backgroundColor = Theme.of(context).colorScheme.primaryContainer;
-
-      borderColor = Theme.of(context).colorScheme.primary;
-
-      textColor = Theme.of(context).colorScheme.primary;
+      backgroundColor = AppColors.primary.withValues(alpha: 0.1);
+      borderColor = AppColors.primary;
+      textColor = AppColors.primary;
     }
 
     return Padding(
@@ -650,7 +705,10 @@ class _PracticeScreenState extends State<PracticeScreen> {
             decoration: BoxDecoration(
               color: backgroundColor,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: borderColor, width: 1.5),
+              border: Border.all(
+                color: borderColor,
+                width: (isCorrect || isWrong || isSelected) ? 2.0 : 1.0,
+              ),
             ),
             child: Row(
               children: [
@@ -659,14 +717,23 @@ class _PracticeScreenState extends State<PracticeScreen> {
                   height: 38,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
+                    color: isCorrect
+                        ? AppColors.success
+                        : (isWrong ? AppColors.error : Colors.transparent),
                     shape: BoxShape.circle,
-                    border: Border.all(color: borderColor),
+                    border: Border.all(
+                      color: (isCorrect || isWrong) ? Colors.transparent : borderColor,
+                      width: 1.5,
+                    ),
                   ),
                   child: Text(
                     letter,
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
-                      color: textColor,
+                      fontSize: 15,
+                      color: (isCorrect || isWrong)
+                          ? Colors.white
+                          : textColor,
                     ),
                   ),
                 ),
@@ -684,10 +751,7 @@ class _PracticeScreenState extends State<PracticeScreen> {
                   ),
                 ),
 
-                if (isCorrect)
-                  const Icon(Icons.check_circle, color: Colors.green),
-
-                if (isWrong) const Icon(Icons.cancel, color: Colors.red),
+                ?trailingBadge,
               ],
             ),
           ),
@@ -702,16 +766,20 @@ class _PracticeScreenState extends State<PracticeScreen> {
 
   Widget _buildFeedback(Question question) {
     final selectedAnswer = _selectedAnswers[_currentIndex];
-
-    final isCorrect = selectedAnswer == question.correctAnswer;
+    final resolvedCorrect = _resolveCorrectLetter(question);
+    final isCorrect = selectedAnswer == resolvedCorrect;
 
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: isCorrect ? Colors.green.shade50 : Colors.red.shade50,
+        color: isCorrect
+            ? AppColors.success.withValues(alpha: 0.08)
+            : AppColors.error.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: isCorrect ? Colors.green.shade200 : Colors.red.shade200,
+          color: isCorrect
+              ? AppColors.success.withValues(alpha: 0.35)
+              : AppColors.error.withValues(alpha: 0.35),
         ),
       ),
       child: Column(
@@ -720,8 +788,9 @@ class _PracticeScreenState extends State<PracticeScreen> {
           Row(
             children: [
               Icon(
-                isCorrect ? Icons.check_circle : Icons.cancel,
-                color: isCorrect ? Colors.green : Colors.red,
+                isCorrect ? Icons.check_circle_rounded : Icons.cancel_rounded,
+                color: isCorrect ? AppColors.success : AppColors.error,
+                size: 24,
               ),
 
               const SizedBox(width: 8),
@@ -732,8 +801,8 @@ class _PracticeScreenState extends State<PracticeScreen> {
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                   color: isCorrect
-                      ? Colors.green.shade800
-                      : Colors.red.shade800,
+                      ? AppColors.success
+                      : AppColors.error,
                 ),
               ),
             ],
@@ -743,16 +812,24 @@ class _PracticeScreenState extends State<PracticeScreen> {
             const SizedBox(height: 12),
 
             Text(
-              'Correct answer: ${question.correctAnswer}',
-              style: const TextStyle(fontWeight: FontWeight.w700),
+              'Correct answer: ($resolvedCorrect)',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: context.eduColors.textPrimary,
+                fontSize: 15,
+              ),
             ),
           ],
 
           const SizedBox(height: 16),
 
-          const Text(
+          Text(
             'Explanation',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: context.eduColors.textPrimary,
+            ),
           ),
 
           const SizedBox(height: 6),
@@ -761,7 +838,61 @@ class _PracticeScreenState extends State<PracticeScreen> {
             question.explanation.isEmpty
                 ? 'No explanation has been added yet.'
                 : question.explanation,
-            style: const TextStyle(fontSize: 15, height: 1.5),
+            style: TextStyle(
+              fontSize: 15,
+              height: 1.5,
+              color: context.eduColors.textPrimary,
+            ),
+          ),
+
+          const SizedBox(height: 16),
+          Divider(color: context.eduColors.border),
+          const SizedBox(height: 8),
+
+          // Actions: Explain More & Report Question
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.tonalIcon(
+                  onPressed: () {
+                    final opts = <String, String>{};
+                    for (int i = 0; i < question.options.length; i++) {
+                      opts[String.fromCharCode(65 + i)] = question.options[i];
+                    }
+                    ExplainMoreSheet.show(
+                      context,
+                      questionId: question.id,
+                      questionText: question.question,
+                      options: opts,
+                      correctAnswer: resolvedCorrect,
+                      subject: widget.subject,
+                      grade: widget.grade,
+                      unitNumber: widget.unitNumber,
+                      examYear: widget.examYear?.toString(),
+                    );
+                  },
+                  icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+                  label: const Text('Explain More'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              IconButton.outlined(
+                tooltip: 'Report question issue',
+                icon: Icon(Icons.flag_outlined, size: 20, color: context.eduColors.textSecondary),
+                onPressed: () {
+                  ReportQuestionDialog.show(
+                    context,
+                    questionId: question.id,
+                    questionType: 'practice',
+                    subject: widget.subject,
+                    grade: widget.grade,
+                    unitOrYear: 'Unit ${widget.unitNumber}',
+                    correctAnswer: resolvedCorrect,
+                    studentAnswer: selectedAnswer,
+                  );
+                },
+              ),
+            ],
           ),
         ],
       ),

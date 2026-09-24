@@ -32,19 +32,17 @@ class AppNavigation {
       route: '/practice-selection',
     ),
     AppNavigationDestination(
+      label: 'Games',
+      icon: Icons.sports_esports_outlined,
+      selectedIcon: Icons.sports_esports_rounded,
+      route: '/game',
+    ),
+    AppNavigationDestination(
       label: 'Progress',
       icon: Icons.bar_chart_outlined,
       selectedIcon: Icons.bar_chart_rounded,
       route: '/progress',
     ),
-
-    AppNavigationDestination(
-      label: 'Games',
-      icon: Icons.sports_esports_outlined,
-      selectedIcon: Icons.sports_esports_rounded,
-      route: '/challenges',
-    ),
-
     AppNavigationDestination(
       label: 'Profile',
       icon: Icons.person_outline_rounded,

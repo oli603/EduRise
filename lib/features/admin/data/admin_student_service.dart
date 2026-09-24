@@ -1,8 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../payment/data/models/payment_submission.dart';
 import 'admin_service.dart';
 import 'audit_service.dart';
-import 'models/payment_model.dart';
 
 class StudentSummary {
   final String uid;

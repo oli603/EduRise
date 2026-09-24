@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_icons.dart';
+import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_text_styles.dart';
+import 'edurise_logo.dart';
 
 class AuthLayout extends StatelessWidget {
   final String title;
@@ -18,40 +19,40 @@ class AuthLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final titleColor = isDark ? AppColors.textPrimaryDark : AppColors.textPrimary;
+    final subtitleColor = isDark ? AppColors.textSecondaryDark : AppColors.textSecondary;
+
     return Scaffold(
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              minHeight:
-                  MediaQuery.of(context).size.height -
-                  MediaQuery.of(context).padding.top -
-                  (AppSpacing.lg * 2),
-            ),
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                const SizedBox(height: AppSpacing.xl),
+                const EduRiseLogo(
+                  size: 60,
+                  showLabel: false,
+                ),
 
-                const Icon(AppIcons.school, size: 90),
-
-                const SizedBox(height: AppSpacing.lg),
+                const SizedBox(height: 16),
 
                 Text(
                   title,
-                  style: AppTextStyles.heading1,
+                  style: AppTextStyles.headingLarge.copyWith(color: titleColor),
                   textAlign: TextAlign.center,
                 ),
 
-                const SizedBox(height: AppSpacing.sm),
+                const SizedBox(height: 6),
 
                 Text(
                   subtitle,
                   textAlign: TextAlign.center,
-                  style: AppTextStyles.body,
+                  style: AppTextStyles.bodyMedium.copyWith(color: subtitleColor),
                 ),
 
-                const SizedBox(height: AppSpacing.xxl),
+                const SizedBox(height: AppSpacing.lg),
 
                 child,
               ],

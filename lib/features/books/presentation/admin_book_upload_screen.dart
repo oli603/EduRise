@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../data/book_model.dart';
 import '../data/book_service.dart';
@@ -393,6 +394,16 @@ class _AdminBookUploadScreenState extends State<AdminBookUploadScreen> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  void _safeBack() {
+    if (context.canPop()) {
+      context.pop();
+    } else if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    } else {
+      context.go('/admin/dashboard');
+    }
+  }
+
   // ============================================================
   // BUILD
   // ============================================================
@@ -401,10 +412,23 @@ class _AdminBookUploadScreenState extends State<AdminBookUploadScreen> {
   Widget build(BuildContext context) {
     final hasUnits = _uploadQueue.isNotEmpty;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Upload Book Units')),
-      body: SafeArea(
-        child: ListView(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _safeBack();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded),
+            tooltip: 'Back',
+            onPressed: _safeBack,
+          ),
+          title: const Text('Upload Book Units'),
+        ),
+        body: SafeArea(
+          child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
             const Text(
@@ -722,6 +746,7 @@ class _AdminBookUploadScreenState extends State<AdminBookUploadScreen> {
           ],
         ),
       ),
+    ),
     );
   }
 }

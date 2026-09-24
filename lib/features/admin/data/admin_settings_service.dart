@@ -25,7 +25,7 @@ class SystemSettings {
       cbeAccount: '1000123456789',
       cbeAccountName: 'EduRise Academy',
       telebirrNumber: '0911000000',
-      subscriptionPrice: 500.0,
+      subscriptionPrice: 1499.0,
       maintenanceMode: false,
       announcementBanner: '',
     );
@@ -36,7 +36,7 @@ class SystemSettings {
       cbeAccount: data['cbeAccount'] as String? ?? '1000123456789',
       cbeAccountName: data['cbeAccountName'] as String? ?? 'EduRise Academy',
       telebirrNumber: data['telebirrNumber'] as String? ?? '0911000000',
-      subscriptionPrice: (data['subscriptionPrice'] as num?)?.toDouble() ?? 500.0,
+      subscriptionPrice: (data['subscriptionPrice'] as num?)?.toDouble() ?? 1499.0,
       maintenanceMode: data['maintenanceMode'] as bool? ?? false,
       announcementBanner: data['announcementBanner'] as String? ?? '',
     );
@@ -61,12 +61,25 @@ class AdminSettingsService {
   DocumentReference<Map<String, dynamic>> get _settingsDoc =>
       _firestore.collection('system_settings').doc('general');
 
+  Stream<SystemSettings> getSettingsStream() {
+    return _settingsDoc.snapshots().map((doc) {
+      if (!doc.exists || doc.data() == null) {
+        return SystemSettings.defaults();
+      }
+      return SystemSettings.fromMap(doc.data()!);
+    }).handleError((_) => SystemSettings.defaults());
+  }
+
   Future<SystemSettings> getSettings() async {
-    final doc = await _settingsDoc.get();
-    if (!doc.exists || doc.data() == null) {
+    try {
+      final doc = await _settingsDoc.get();
+      if (!doc.exists || doc.data() == null) {
+        return SystemSettings.defaults();
+      }
+      return SystemSettings.fromMap(doc.data()!);
+    } catch (_) {
       return SystemSettings.defaults();
     }
-    return SystemSettings.fromMap(doc.data()!);
   }
 
   Future<void> updateSettings(SystemSettings settings) async {

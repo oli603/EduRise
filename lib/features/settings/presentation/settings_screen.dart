@@ -6,6 +6,7 @@ import '../../../core/settings/app_settings_controller.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../about/presentation/about_screen.dart';
 import '../../profile/presentation/widgets/profile_settings_modals.dart';
+import 'widgets/report_bug_dialog.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -261,51 +262,7 @@ class SettingsScreen extends StatelessWidget {
   }
 
   static void _showReportProblemModal(BuildContext context) {
-    final problemController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Report a Problem', style: TextStyle(fontWeight: FontWeight.bold)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Describe the issue you encountered and we will investigate promptly:',
-                style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: problemController,
-                maxLines: 4,
-                decoration: const InputDecoration(
-                  hintText: 'e.g. Question #12 has a formatting issue...',
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Thank you! Your feedback has been received.'),
-                    backgroundColor: AppColors.success,
-                  ),
-                );
-              },
-              child: const Text('Submit Report'),
-            ),
-          ],
-        );
-      },
-    );
+    ReportBugDialog.show(context);
   }
 
   static void _showLegalModal(

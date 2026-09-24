@@ -60,11 +60,34 @@ class _PastExamUploadScreenState extends State<PastExamUploadScreen> {
     return [];
   }
 
+  void _safeBack() {
+    if (context.canPop()) {
+      context.pop();
+    } else if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    } else {
+      context.go('/admin/dashboard');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Upload Past Entrance Exam')),
-      body: SingleChildScrollView(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _safeBack();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded),
+            tooltip: 'Back',
+            onPressed: _safeBack,
+          ),
+          title: const Text('Upload Past Entrance Exam'),
+        ),
+        body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -193,6 +216,7 @@ class _PastExamUploadScreenState extends State<PastExamUploadScreen> {
           ],
         ),
       ),
+    ),
     );
   }
 
@@ -231,6 +255,7 @@ class _PastExamUploadScreenState extends State<PastExamUploadScreen> {
 
         DropdownButtonFormField<String>(
           initialValue: value,
+          isExpanded: true,
           decoration: InputDecoration(
             hintText: hint,
             border: const OutlineInputBorder(),

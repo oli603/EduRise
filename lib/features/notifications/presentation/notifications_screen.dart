@@ -10,6 +10,7 @@ class NotificationsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final notificationService = NotificationService();
+    final colors = context.eduColors;
 
     return Scaffold(
       appBar: AppBar(
@@ -29,7 +30,7 @@ class NotificationsScreen extends StatelessWidget {
             return Center(
               child: Text(
                 'Unable to load notifications.',
-                style: TextStyle(color: Colors.grey.shade600),
+                style: TextStyle(color: colors.textSecondary),
               ),
             );
           }
@@ -44,17 +45,21 @@ class NotificationsScreen extends StatelessWidget {
                   Icon(
                     Icons.notifications_off_outlined,
                     size: 64,
-                    color: Colors.grey.shade400,
+                    color: colors.textMuted,
                   ),
                   const SizedBox(height: 16),
-                  const Text(
+                  Text(
                     'No Notifications Yet',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: colors.textPrimary,
+                    ),
                   ),
                   const SizedBox(height: 6),
                   Text(
                     'You are all caught up!',
-                    style: TextStyle(color: Colors.grey.shade600),
+                    style: TextStyle(color: colors.textSecondary),
                   ),
                 ],
               ),
@@ -94,6 +99,7 @@ class _NotificationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.eduColors;
     IconData icon;
     Color iconColor;
     Color bgBadgeColor;
@@ -102,32 +108,39 @@ class _NotificationCard extends StatelessWidget {
       case 'payment_approved':
         icon = Icons.verified_rounded;
         iconColor = AppColors.success;
-        bgBadgeColor = AppColors.success.withOpacity(0.12);
+        bgBadgeColor = AppColors.success.withValues(alpha: 0.12);
         break;
       case 'payment_rejected':
         icon = Icons.error_outline_rounded;
         iconColor = AppColors.error;
-        bgBadgeColor = AppColors.error.withOpacity(0.12);
+        bgBadgeColor = AppColors.error.withValues(alpha: 0.12);
         break;
       case 'announcement':
         icon = Icons.campaign_rounded;
-        iconColor = AppColors.primary;
-        bgBadgeColor = AppColors.primary.withOpacity(0.12);
+        iconColor = colors.primary;
+        bgBadgeColor = colors.primary.withValues(alpha: 0.12);
         break;
       default:
         icon = Icons.notifications_rounded;
-        iconColor = AppColors.primary;
-        bgBadgeColor = AppColors.primary.withOpacity(0.12);
+        iconColor = colors.primary;
+        bgBadgeColor = colors.primary.withValues(alpha: 0.12);
     }
+
+    final cardBg = notification.isRead
+        ? colors.cardBackground
+        : (colors.isDark
+            ? colors.primary.withValues(alpha: 0.15)
+            : colors.primary.withValues(alpha: 0.05));
+    final borderCol = notification.isRead
+        ? colors.border
+        : colors.primary.withValues(alpha: 0.35);
 
     return Card(
       elevation: 0,
-      color: notification.isRead ? Colors.white : AppColors.primary.withOpacity(0.04),
+      color: cardBg,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: notification.isRead ? AppColors.border : AppColors.primary.withOpacity(0.3),
-        ),
+        side: BorderSide(color: borderCol),
       ),
       child: InkWell(
         onTap: onTap,
@@ -159,7 +172,7 @@ class _NotificationCard extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 15,
                               fontWeight: notification.isRead ? FontWeight.w600 : FontWeight.bold,
-                              color: AppColors.textPrimary,
+                              color: colors.textPrimary,
                             ),
                           ),
                         ),
@@ -167,8 +180,8 @@ class _NotificationCard extends StatelessWidget {
                           Container(
                             height: 8,
                             width: 8,
-                            decoration: const BoxDecoration(
-                              color: AppColors.primary,
+                            decoration: BoxDecoration(
+                              color: colors.primary,
                               shape: BoxShape.circle,
                             ),
                           ),
@@ -177,9 +190,9 @@ class _NotificationCard extends StatelessWidget {
                     const SizedBox(height: 5),
                     Text(
                       notification.body,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13,
-                        color: AppColors.textSecondary,
+                        color: colors.textSecondary,
                         height: 1.35,
                       ),
                     ),
@@ -187,7 +200,7 @@ class _NotificationCard extends StatelessWidget {
                       const SizedBox(height: 8),
                       Text(
                         notification.createdAt!.toString().substring(0, 16),
-                        style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                        style: TextStyle(fontSize: 11, color: colors.textMuted),
                       ),
                     ],
                   ],

@@ -12,9 +12,15 @@ class EduRiseTextField extends StatelessWidget {
   final TextInputType keyboardType;
   final bool obscureText;
   final Widget? prefixIcon;
-  final String? Function(String?)?
-  validator; //→ means a function that takes a String? (the user’s input) and returns a String?. and return null
+  final String? Function(String?)? validator;
   final Widget? suffixIcon;
+  final TextInputAction? textInputAction;
+  final Iterable<String>? autofillHints;
+  final ValueChanged<String>? onFieldSubmitted;
+  final bool enabled;
+  final TextCapitalization textCapitalization;
+  final FocusNode? focusNode;
+  final String? helperText;
 
   const EduRiseTextField({
     super.key,
@@ -26,34 +32,64 @@ class EduRiseTextField extends StatelessWidget {
     this.prefixIcon,
     this.validator,
     this.suffixIcon,
+    this.textInputAction,
+    this.autofillHints,
+    this.onFieldSubmitted,
+    this.enabled = true,
+    this.textCapitalization = TextCapitalization.none,
+    this.focusNode,
+    this.helperText,
   });
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.eduColors;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: AppTextStyles.body),
+        Text(
+          label,
+          style: AppTextStyles.labelLarge.copyWith(
+            color: colors.textPrimary,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
 
-        const SizedBox(height: AppSpacing.md),
+        const SizedBox(height: AppSpacing.sm),
 
         TextFormField(
           controller: controller,
           keyboardType: keyboardType,
           obscureText: obscureText,
           validator: validator,
-
+          textInputAction: textInputAction,
+          autofillHints: autofillHints,
+          onFieldSubmitted: onFieldSubmitted,
+          enabled: enabled,
+          textCapitalization: textCapitalization,
+          focusNode: focusNode,
+          style: TextStyle(
+            color: colors.textPrimary,
+            fontSize: 15,
+          ),
           decoration: InputDecoration(
             hintText: hint,
-
+            hintStyle: TextStyle(
+              color: colors.textMuted,
+              fontSize: 14,
+            ),
+            helperText: helperText,
+            helperStyle: TextStyle(
+              color: colors.textSecondary,
+              fontSize: 12,
+            ),
             prefixIcon: prefixIcon,
             suffixIcon: suffixIcon,
-
             filled: true,
-
             fillColor: Theme.of(
               context,
-            ).colorScheme.surface, // adopt the text filled light and dark mode
+            ).colorScheme.surface,
 
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(AppRadius.lg),
@@ -67,7 +103,14 @@ class EduRiseTextField extends StatelessWidget {
 
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(AppRadius.lg),
-              borderSide: BorderSide(color: AppColors.primary, width: 1.5),
+              borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+            ),
+
+            disabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppRadius.lg),
+              borderSide: BorderSide(
+                color: colors.isDark ? AppColors.borderDark : Colors.grey.shade300,
+              ),
             ),
           ),
         ),

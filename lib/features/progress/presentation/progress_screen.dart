@@ -2,6 +2,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_radius.dart';
+import '../../../core/theme/app_text_styles.dart';
 import '../data/progress_service.dart';
 
 class ProgressScreen extends StatefulWidget {
@@ -82,14 +85,15 @@ class _ProgressScreenState extends State<ProgressScreen> {
     final userId = FirebaseAuth.instance.currentUser?.uid ?? 'unknown';
 
     // Required debug logs from Part 9
-    print('=== PROGRESS CALCULATION ===');
-    print('User ID: $userId');
-    print('Total practice sessions: ${results.length}');
-    print('Sum total questions: $totalQuestions');
-    print('Sum correct answers: $correctAnswers');
-    print('Sum wrong answers: $wrongAnswers');
-    print('Overall accuracy: $accuracy%');
-    print('============================');
+    debugPrint('=== PROGRESS CALCULATION ===');
+    debugPrint('User ID: $userId');
+    debugPrint('Total practice sessions: ${results.length}');
+    debugPrint('Sum total questions: $totalQuestions');
+    debugPrint('Sum correct answers: $correctAnswers');
+    debugPrint('Sum wrong answers: $wrongAnswers');
+    debugPrint('Overall accuracy: $accuracy%');
+    debugPrint('============================');
+
 
     if (!mounted) return;
 
@@ -125,14 +129,13 @@ class _ProgressScreenState extends State<ProgressScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Progress')),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _errorMessage != null
-          ? _buildErrorState()
-          : _buildProgressContent(),
-    );
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_errorMessage != null) {
+      return _buildErrorState();
+    }
+    return _buildProgressContent();
   }
 
   Widget _buildErrorState() {
@@ -167,25 +170,23 @@ class _ProgressScreenState extends State<ProgressScreen> {
   }
 
   Widget _buildProgressContent() {
+    final colors = context.eduColors;
+
     return RefreshIndicator(
       onRefresh: _loadProgress,
+      color: colors.isDark ? AppColors.primaryForDark : AppColors.primary,
       child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
         padding: const EdgeInsets.all(20),
         children: [
-          const Text(
-            'Your Progress',
-            style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-          ),
-
-          const SizedBox(height: 6),
-
           Text(
             'Keep practicing and track your improvement.',
-            style: TextStyle(fontSize: 15, color: Colors.grey.shade600),
+            style: AppTextStyles.bodyMedium.copyWith(color: colors.textSecondary),
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
 
           _buildAccuracyCard(),
 
@@ -235,9 +236,12 @@ class _ProgressScreenState extends State<ProgressScreen> {
 
           const SizedBox(height: 28),
 
-          const Text(
+          Text(
             'Practice Summary',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            style: AppTextStyles.headingMedium.copyWith(
+              color: colors.textPrimary,
+              fontWeight: FontWeight.bold,
+            ),
           ),
 
           const SizedBox(height: 12),
@@ -255,36 +259,57 @@ class _ProgressScreenState extends State<ProgressScreen> {
   }
 
   Widget _buildAccuracyCard() {
+    final colors = context.eduColors;
+
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
-        color: Theme.of(context).colorScheme.primary,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: colors.isDark
+              ? [const Color(0xFF1E293B), const Color(0xFF0F172A)]
+              : [const Color(0xFF1D4ED8), const Color(0xFF2563EB)],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: colors.isDark
+                ? Colors.black.withValues(alpha: 0.4)
+                : AppColors.primary.withValues(alpha: 0.25),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         children: [
-          const Text(
+          Text(
             'Overall Accuracy',
-            style: TextStyle(color: Colors.white70, fontSize: 15),
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.8),
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
           ),
-
           const SizedBox(height: 10),
-
           Text(
             '$_accuracy%',
             style: const TextStyle(
               color: Colors.white,
               fontSize: 48,
-              fontWeight: FontWeight.bold,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -1,
             ),
           ),
-
           const SizedBox(height: 6),
-
           Text(
             _getProgressMessage(),
             textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.white, fontSize: 15),
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.9),
+              fontSize: 15,
+            ),
           ),
         ],
       ),
@@ -296,30 +321,45 @@ class _ProgressScreenState extends State<ProgressScreen> {
     required String value,
     required IconData icon,
   }) {
+    final colors = context.eduColors;
+
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.grey.shade200),
+        color: colors.cardBackground,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: colors.border),
+        boxShadow: [
+          BoxShadow(
+            color: colors.isDark
+                ? Colors.black.withValues(alpha: 0.2)
+                : Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 26, color: Theme.of(context).colorScheme.primary),
-
+          Icon(
+            icon,
+            size: 26,
+            color: colors.isDark ? AppColors.primaryForDark : AppColors.primary,
+          ),
           const SizedBox(height: 12),
-
           Text(
             value,
-            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: colors.textPrimary,
+            ),
           ),
-
           const SizedBox(height: 4),
-
           Text(
             title,
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+            style: TextStyle(color: colors.textSecondary, fontSize: 13),
           ),
         ],
       ),
@@ -327,21 +367,24 @@ class _ProgressScreenState extends State<ProgressScreen> {
   }
 
   Widget _buildSummaryCard() {
+    final colors = context.eduColors;
+
     if (_totalQuestions == 0) {
       return Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: Colors.grey.shade200),
+          color: colors.cardBackground,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: Border.all(color: colors.border),
         ),
-        child: const Row(
+        child: Row(
           children: [
-            Icon(Icons.insights_outlined),
-            SizedBox(width: 12),
+            Icon(Icons.insights_outlined, color: colors.textSecondary),
+            const SizedBox(width: 12),
             Expanded(
               child: Text(
                 'Complete some practice questions to start building your progress.',
+                style: TextStyle(color: colors.textSecondary),
               ),
             ),
           ],
@@ -352,34 +395,47 @@ class _ProgressScreenState extends State<ProgressScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.grey.shade200),
+        color: colors.cardBackground,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: colors.border),
+        boxShadow: [
+          BoxShadow(
+            color: colors.isDark
+                ? Colors.black.withValues(alpha: 0.2)
+                : Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Questions Performance',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+              color: colors.textPrimary,
+            ),
           ),
-
           const SizedBox(height: 16),
-
           ClipRRect(
             borderRadius: BorderRadius.circular(10),
             child: LinearProgressIndicator(
               value: _accuracy / 100,
               minHeight: 10,
+              backgroundColor: colors.border,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                colors.isDark ? AppColors.primaryForDark : AppColors.primary,
+              ),
             ),
           ),
-
           const SizedBox(height: 12),
-
           Text(
             'You answered $_correctAnswers out of '
             '$_totalQuestions questions correctly.',
-            style: TextStyle(color: Colors.grey.shade700),
+            style: TextStyle(color: colors.textSecondary),
           ),
         ],
       ),
@@ -387,25 +443,32 @@ class _ProgressScreenState extends State<ProgressScreen> {
   }
 
   Widget _buildEmptyState() {
+    final colors = context.eduColors;
+
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(20),
+        color: colors.cardBackground,
+        borderRadius: BorderRadius.circular(AppRadius.xl),
+        border: Border.all(color: colors.border),
       ),
-      child: const Column(
+      child: Column(
         children: [
-          Icon(Icons.bar_chart_rounded, size: 50),
-          SizedBox(height: 12),
+          Icon(Icons.bar_chart_rounded, size: 50, color: colors.textSecondary),
+          const SizedBox(height: 12),
           Text(
             'Your progress will appear here.',
             textAlign: TextAlign.center,
-            style: TextStyle(fontWeight: FontWeight.w600),
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: colors.textPrimary,
+            ),
           ),
-          SizedBox(height: 6),
+          const SizedBox(height: 6),
           Text(
             'Start practicing to see your performance.',
             textAlign: TextAlign.center,
+            style: TextStyle(color: colors.textSecondary),
           ),
         ],
       ),

@@ -169,19 +169,32 @@ class _StudyPlanScreenState extends State<StudyPlanScreen> {
     }
   }
 
+  Future<void> _openEditTaskScreen(StudyTask task) async {
+    final result = await context.push<bool>('/add-study-task', extra: task);
+
+    if (result == true) {
+      await _loadTodayTasks();
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // BUILD
   // ---------------------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.eduColors;
+
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: colors.scaffoldBackground,
 
       appBar: AppBar(
-        title: const Text(
+        title: Text(
           'Study Plan',
-          style: TextStyle(fontWeight: FontWeight.w700),
+          style: AppTextStyles.headingMedium.copyWith(
+            color: colors.textPrimary,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
 
@@ -202,6 +215,8 @@ class _StudyPlanScreenState extends State<StudyPlanScreen> {
   // ---------------------------------------------------------------------------
 
   Widget _buildBody() {
+    final colors = context.eduColors;
+
     if (_isLoading) {
       return const Center(
         child: CircularProgressIndicator(color: AppColors.primary),
@@ -238,7 +253,11 @@ class _StudyPlanScreenState extends State<StudyPlanScreen> {
 
           Text(
             "Today's Tasks",
-            style: AppTextStyles.heading2.copyWith(fontSize: 20),
+            style: AppTextStyles.headingMedium.copyWith(
+              color: colors.textPrimary,
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+            ),
           ),
 
           const SizedBox(height: AppSpacing.md),
@@ -259,6 +278,7 @@ class _StudyPlanScreenState extends State<StudyPlanScreen> {
   // ---------------------------------------------------------------------------
 
   Widget _buildDateHeader() {
+    final colors = context.eduColors;
     final now = DateTime.now();
 
     return Column(
@@ -266,8 +286,8 @@ class _StudyPlanScreenState extends State<StudyPlanScreen> {
       children: [
         Text(
           _formatFullDate(now),
-          style: AppTextStyles.body.copyWith(
-            color: AppColors.textSecondary,
+          style: AppTextStyles.bodySmall.copyWith(
+            color: colors.textSecondary,
             fontSize: 14,
           ),
         ),
@@ -276,7 +296,11 @@ class _StudyPlanScreenState extends State<StudyPlanScreen> {
 
         Text(
           'Your study plan for today',
-          style: AppTextStyles.heading1.copyWith(fontSize: 26),
+          style: AppTextStyles.headingLarge.copyWith(
+            color: colors.textPrimary,
+            fontSize: 26,
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ],
     );
@@ -390,23 +414,24 @@ class _StudyPlanScreenState extends State<StudyPlanScreen> {
   // ---------------------------------------------------------------------------
 
   Widget _buildTaskCard(StudyTask task) {
+    final colors = context.eduColors;
     final taskColor = _taskTypeColor(task.taskType);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: colors.cardBackground,
         borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(
           color: task.isCompleted
-              // ignore: deprecated_member_use
-              ? AppColors.success.withOpacity(0.35)
-              : AppColors.border,
+              ? AppColors.success.withValues(alpha: 0.35)
+              : colors.border,
         ),
         boxShadow: [
           BoxShadow(
-            // ignore: deprecated_member_use
-            color: Colors.black.withOpacity(0.03),
+            color: colors.isDark
+                ? Colors.black.withValues(alpha: 0.25)
+                : Colors.black.withValues(alpha: 0.03),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -436,8 +461,8 @@ class _StudyPlanScreenState extends State<StudyPlanScreen> {
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
                             color: task.isCompleted
-                                ? AppColors.textSecondary
-                                : AppColors.textPrimary,
+                                ? colors.textSecondary
+                                : colors.textPrimary,
                             decoration: task.isCompleted
                                 ? TextDecoration.lineThrough
                                 : null,
@@ -458,8 +483,8 @@ class _StudyPlanScreenState extends State<StudyPlanScreen> {
                     style: TextStyle(
                       fontSize: 14,
                       color: task.isCompleted
-                          ? AppColors.textSecondary
-                          : AppColors.textPrimary,
+                          ? colors.textSecondary
+                          : colors.textPrimary,
                       decoration: task.isCompleted
                           ? TextDecoration.lineThrough
                           : null,
@@ -472,14 +497,14 @@ class _StudyPlanScreenState extends State<StudyPlanScreen> {
 
                   if (task.isCompleted) ...[
                     const SizedBox(height: AppSpacing.sm),
-                    Row(
+                    const Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.check_circle_rounded,
                           size: 16,
                           color: AppColors.success,
                         ),
-                        const SizedBox(width: 5),
+                        SizedBox(width: 5),
                         Text(
                           'Completed',
                           style: TextStyle(
@@ -509,6 +534,8 @@ class _StudyPlanScreenState extends State<StudyPlanScreen> {
   // ---------------------------------------------------------------------------
 
   Widget _buildTaskCheckbox(StudyTask task) {
+    final colors = context.eduColors;
+
     return InkWell(
       borderRadius: BorderRadius.circular(50),
       onTap: () => _toggleTask(task),
@@ -520,7 +547,7 @@ class _StudyPlanScreenState extends State<StudyPlanScreen> {
           shape: BoxShape.circle,
           color: task.isCompleted ? AppColors.success : Colors.transparent,
           border: Border.all(
-            color: task.isCompleted ? AppColors.success : AppColors.border,
+            color: task.isCompleted ? AppColors.success : colors.border,
             width: 2,
           ),
         ),
@@ -597,16 +624,18 @@ class _StudyPlanScreenState extends State<StudyPlanScreen> {
   // ---------------------------------------------------------------------------
 
   Widget _buildDetailItem({required IconData icon, required String text}) {
+    final colors = context.eduColors;
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 14, color: AppColors.textSecondary),
+        Icon(icon, size: 14, color: colors.textSecondary),
 
         const SizedBox(width: 4),
 
         Text(
           text,
-          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          style: TextStyle(fontSize: 12, color: colors.textSecondary),
         ),
       ],
     );
@@ -617,16 +646,30 @@ class _StudyPlanScreenState extends State<StudyPlanScreen> {
   // ---------------------------------------------------------------------------
 
   Widget _buildTaskMenu(StudyTask task) {
+    final colors = context.eduColors;
+
     return PopupMenuButton<String>(
-      icon: const Icon(Icons.more_vert_rounded, color: AppColors.textSecondary),
+      icon: Icon(Icons.more_vert_rounded, color: colors.textSecondary),
       tooltip: 'Task options',
       onSelected: (value) {
-        if (value == 'delete') {
+        if (value == 'edit') {
+          _openEditTaskScreen(task);
+        } else if (value == 'delete') {
           _deleteTask(task);
         }
       },
       itemBuilder: (context) {
         return const [
+          PopupMenuItem<String>(
+            value: 'edit',
+            child: Row(
+              children: [
+                Icon(Icons.edit_outlined, color: AppColors.primary),
+                SizedBox(width: 10),
+                Text('Edit'),
+              ],
+            ),
+          ),
           PopupMenuItem<String>(
             value: 'delete',
             child: Row(
@@ -647,6 +690,8 @@ class _StudyPlanScreenState extends State<StudyPlanScreen> {
   // ---------------------------------------------------------------------------
 
   Widget _buildEmptyState() {
+    final colors = context.eduColors;
+
     return RefreshIndicator(
       color: AppColors.primary,
       onRefresh: _loadTodayTasks,
@@ -660,14 +705,15 @@ class _StudyPlanScreenState extends State<StudyPlanScreen> {
             width: 90,
             height: 90,
             decoration: BoxDecoration(
-              // ignore: deprecated_member_use
-              color: AppColors.primary.withOpacity(0.10),
+              color: colors.isDark
+                  ? AppColors.primary.withValues(alpha: 0.18)
+                  : AppColors.primary.withValues(alpha: 0.10),
               shape: BoxShape.circle,
             ),
-            child: const Icon(
+            child: Icon(
               Icons.event_note_rounded,
               size: 44,
-              color: AppColors.primary,
+              color: colors.isDark ? AppColors.primaryForDark : AppColors.primary,
             ),
           ),
 
@@ -676,7 +722,11 @@ class _StudyPlanScreenState extends State<StudyPlanScreen> {
           Text(
             'Your day is clear',
             textAlign: TextAlign.center,
-            style: AppTextStyles.heading2.copyWith(fontSize: 22),
+            style: AppTextStyles.headingLarge.copyWith(
+              fontSize: 22,
+              color: colors.textPrimary,
+              fontWeight: FontWeight.bold,
+            ),
           ),
 
           const SizedBox(height: AppSpacing.sm),
@@ -685,15 +735,20 @@ class _StudyPlanScreenState extends State<StudyPlanScreen> {
             'You have no study tasks scheduled for today. '
             'Create one and start making progress.',
             textAlign: TextAlign.center,
-            style: AppTextStyles.body.copyWith(fontSize: 14),
+            style: AppTextStyles.bodyMedium.copyWith(
+              fontSize: 14,
+              color: colors.textSecondary,
+            ),
           ),
 
           const SizedBox(height: AppSpacing.lg),
 
-          ElevatedButton.icon(
-            onPressed: _openAddTaskScreen,
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Add Study Task'),
+          Center(
+            child: ElevatedButton.icon(
+              onPressed: _openAddTaskScreen,
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Add Study Task'),
+            ),
           ),
         ],
       ),
@@ -705,6 +760,8 @@ class _StudyPlanScreenState extends State<StudyPlanScreen> {
   // ---------------------------------------------------------------------------
 
   Widget _buildErrorState() {
+    final colors = context.eduColors;
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.lg),
@@ -715,8 +772,7 @@ class _StudyPlanScreenState extends State<StudyPlanScreen> {
               width: 72,
               height: 72,
               decoration: BoxDecoration(
-                // ignore: deprecated_member_use
-                color: AppColors.error.withOpacity(0.10),
+                color: AppColors.error.withValues(alpha: 0.10),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -731,7 +787,11 @@ class _StudyPlanScreenState extends State<StudyPlanScreen> {
             Text(
               'Something went wrong',
               textAlign: TextAlign.center,
-              style: AppTextStyles.heading2.copyWith(fontSize: 20),
+              style: AppTextStyles.headingMedium.copyWith(
+                fontSize: 20,
+                color: colors.textPrimary,
+                fontWeight: FontWeight.bold,
+              ),
             ),
 
             const SizedBox(height: AppSpacing.sm),
@@ -739,7 +799,10 @@ class _StudyPlanScreenState extends State<StudyPlanScreen> {
             Text(
               _errorMessage!,
               textAlign: TextAlign.center,
-              style: AppTextStyles.body.copyWith(fontSize: 14),
+              style: AppTextStyles.bodyMedium.copyWith(
+                fontSize: 14,
+                color: colors.textSecondary,
+              ),
             ),
 
             const SizedBox(height: AppSpacing.lg),

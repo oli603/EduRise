@@ -1,40 +1,69 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 import 'challenge_model.dart';
+import 'local/challenge_store.dart';
 
 class ChallengeService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final ChallengeStore _storage = ChallengeStore();
 
   CollectionReference<Map<String, dynamic>> get _challengesCollection =>
       _firestore.collection('challenges');
 
   /// Create a new challenge.
   Future<String> addChallenge(Challenge challenge) async {
-    final document = _challengesCollection.doc();
+    final docId = challenge.id.isNotEmpty
+        ? challenge.id
+        : _challengesCollection.doc().id;
 
     final challengeWithMetadata = challenge.copyWith(
-      id: document.id,
-      createdAt: DateTime.now(),
+      id: docId,
+      createdAt: challenge.createdAt ?? DateTime.now(),
     );
 
-    await document.set({
-      ...challengeWithMetadata.toMap(),
-      'createdAt': FieldValue.serverTimestamp(),
-    });
+    // Save locally
+    await _storage.saveChallengeLocally(challengeWithMetadata);
 
-    return document.id;
+    // Try remote Firestore write
+    try {
+      await _challengesCollection.doc(docId).set({
+        ...challengeWithMetadata.toMap(),
+        'createdAt': FieldValue.serverTimestamp(),
+      }).timeout(const Duration(seconds: 4));
+    } catch (e) {
+      debugPrint('ChallengeService: offline, queuing pending challenge op: $e');
+      await _storage.queuePendingChallengeOp({
+        'opId': '${DateTime.now().millisecondsSinceEpoch}_create_$docId',
+        'type': 'create',
+        'challengeId': docId,
+        'data': challengeWithMetadata.toMap(),
+      });
+    }
+
+    return docId;
   }
 
   /// Get all challenges belonging to a specific user.
   Future<List<Challenge>> getUserChallenges({required String userId}) async {
-    final snapshot = await _challengesCollection
-        .where('userId', isEqualTo: userId)
-        .orderBy('scheduledDate')
-        .get();
+    // Try remote fetch and cache locally
+    try {
+      final snapshot = await _challengesCollection
+          .where('userId', isEqualTo: userId)
+          .orderBy('scheduledDate')
+          .get()
+          .timeout(const Duration(seconds: 4));
 
-    return snapshot.docs
-        .map((document) => Challenge.fromMap(document.id, document.data()))
-        .toList();
+      final remoteList = snapshot.docs
+          .map((doc) => Challenge.fromMap(doc.id, doc.data()))
+          .toList();
+
+      await _storage.syncChallengesFromRemote(remoteList);
+    } catch (e) {
+      debugPrint('ChallengeService getUserChallenges offline/remote error: $e');
+    }
+
+    return _storage.getLocalChallenges(userId: userId);
   }
 
   /// Get challenges scheduled for a specific day.
@@ -42,23 +71,15 @@ class ChallengeService {
     required String userId,
     required DateTime date,
   }) async {
-    final startOfDay = DateTime(date.year, date.month, date.day);
+    final allChallenges = await getUserChallenges(userId: userId);
 
+    final startOfDay = DateTime(date.year, date.month, date.day);
     final endOfDay = startOfDay.add(const Duration(days: 1));
 
-    final snapshot = await _challengesCollection
-        .where('userId', isEqualTo: userId)
-        .where(
-          'scheduledDate',
-          isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay),
-        )
-        .where('scheduledDate', isLessThan: Timestamp.fromDate(endOfDay))
-        .orderBy('scheduledDate')
-        .get();
-
-    return snapshot.docs
-        .map((document) => Challenge.fromMap(document.id, document.data()))
-        .toList();
+    return allChallenges.where((challenge) {
+      final sDate = challenge.scheduledDate;
+      return !sDate.isBefore(startOfDay) && sDate.isBefore(endOfDay);
+    }).toList();
   }
 
   /// Update the current progress of a challenge.
@@ -67,17 +88,36 @@ class ChallengeService {
     required int currentCount,
   }) async {
     final challenge = await getChallengeById(challengeId);
-
     if (challenge == null) {
       throw Exception('Challenge not found.');
     }
 
     final completed = currentCount >= challenge.targetCount;
 
-    await _challengesCollection.doc(challengeId).update({
-      'currentCount': currentCount,
-      'isCompleted': completed,
-    });
+    // Update locally
+    await _storage.markChallengeProgressLocally(
+      challengeId,
+      isCompleted: completed,
+    );
+
+    // Try remote update
+    try {
+      await _challengesCollection.doc(challengeId).update({
+        'currentCount': currentCount,
+        'isCompleted': completed,
+      }).timeout(const Duration(seconds: 4));
+    } catch (e) {
+      debugPrint('ChallengeService updateProgress offline error: $e');
+      await _storage.queuePendingChallengeOp({
+        'opId': '${DateTime.now().millisecondsSinceEpoch}_update_progress_$challengeId',
+        'type': 'update',
+        'challengeId': challengeId,
+        'data': {
+          'currentCount': currentCount,
+          'isCompleted': completed,
+        },
+      });
+    }
   }
 
   /// Mark a challenge as completed or incomplete.
@@ -85,25 +125,60 @@ class ChallengeService {
     required String challengeId,
     required bool completed,
   }) async {
-    await _challengesCollection.doc(challengeId).update({
-      'isCompleted': completed,
-    });
+    await _storage.markChallengeProgressLocally(
+      challengeId,
+      isCompleted: completed,
+    );
+
+    try {
+      await _challengesCollection.doc(challengeId).update({
+        'isCompleted': completed,
+      }).timeout(const Duration(seconds: 4));
+    } catch (e) {
+      await _storage.queuePendingChallengeOp({
+        'opId': '${DateTime.now().millisecondsSinceEpoch}_complete_$challengeId',
+        'type': 'update',
+        'challengeId': challengeId,
+        'data': {'isCompleted': completed},
+      });
+    }
   }
 
   /// Delete a challenge.
   Future<void> deleteChallenge(String challengeId) async {
-    await _challengesCollection.doc(challengeId).delete();
+    await _storage.deleteChallengeLocally(challengeId);
+
+    try {
+      await _challengesCollection.doc(challengeId).delete().timeout(const Duration(seconds: 4));
+    } catch (e) {
+      await _storage.queuePendingChallengeOp({
+        'opId': '${DateTime.now().millisecondsSinceEpoch}_delete_$challengeId',
+        'type': 'delete',
+        'challengeId': challengeId,
+      });
+    }
   }
 
   /// Get one challenge by its ID.
   Future<Challenge?> getChallengeById(String challengeId) async {
-    final document = await _challengesCollection.doc(challengeId).get();
+    await _storage.init();
+    // Look up directly in storage
+    final allUserChallenges = await _storage.getLocalChallenges(userId: '');
 
-    if (!document.exists) {
-      return null;
+    for (final c in allUserChallenges) {
+      if (c.id == challengeId) return c;
     }
 
-    return Challenge.fromMap(document.id, document.data()!);
+    try {
+      final document = await _challengesCollection.doc(challengeId).get().timeout(const Duration(seconds: 3));
+      if (document.exists) {
+        final ch = Challenge.fromMap(document.id, document.data()!);
+        await _storage.saveChallengeLocally(ch);
+        return ch;
+      }
+    } catch (_) {}
+
+    return null;
   }
 
   /// Update the target questions count of a challenge.
@@ -112,9 +187,25 @@ class ChallengeService {
     required int targetCount,
   }) async {
     if (challengeId.isEmpty) return;
-    await _challengesCollection.doc(challengeId).update({
-      'targetCount': targetCount,
-    });
+
+    final challenge = await getChallengeById(challengeId);
+    if (challenge != null) {
+      final updated = challenge.copyWith(targetCount: targetCount);
+      await _storage.saveChallengeLocally(updated);
+    }
+
+    try {
+      await _challengesCollection.doc(challengeId).update({
+        'targetCount': targetCount,
+      }).timeout(const Duration(seconds: 4));
+    } catch (e) {
+      await _storage.queuePendingChallengeOp({
+        'opId': '${DateTime.now().millisecondsSinceEpoch}_target_count_$challengeId',
+        'type': 'update',
+        'challengeId': challengeId,
+        'data': {'targetCount': targetCount},
+      });
+    }
   }
 
   /// Increase today's practice challenge progress by [count].
@@ -126,69 +217,37 @@ class ChallengeService {
     int count = 1,
   }) async {
     final today = DateTime.now();
+    final todayChallenges = await getChallengesForDate(
+      userId: userId,
+      date: today,
+    );
 
-    final startOfDay = DateTime(today.year, today.month, today.day);
+    final matchingChallenges = todayChallenges.where((challenge) {
+      final isPracticeChallenge = challenge.challengeType == 'practice';
+      final sameSubject = challenge.subject.toLowerCase() == subject.toLowerCase();
+      final sameGrade = grade == null || grade.isEmpty || challenge.grade.toLowerCase() == grade.toLowerCase();
+      final sameUnit = unitNumber == null || unitNumber == 0 || challenge.unitNumber == unitNumber;
+      final isCompleted = challenge.isCompleted;
 
-    final endOfDay = startOfDay.add(const Duration(days: 1));
-
-    // We only use userId in the Firestore query.
-    // The remaining filtering happens in Dart.
-    // This helps us avoid creating another composite index.
-    final snapshot = await _challengesCollection
-        .where('userId', isEqualTo: userId)
-        .get();
-
-    final matchingChallenges = snapshot.docs.where((document) {
-      final data = document.data();
-
-      final challengeSubject = data['subject'] as String? ?? '';
-      final challengeGrade = data['grade'] as String? ?? '';
-      final challengeUnitNumber = (data['unitNumber'] as num?)?.toInt() ?? 0;
-      final challengeType = data['challengeType'] as String? ?? '';
-
-      final scheduledDate = Challenge.fromMap(document.id, data).scheduledDate;
-
-      final isToday =
-          !scheduledDate.isBefore(startOfDay) &&
-          scheduledDate.isBefore(endOfDay);
-
-      final isPracticeChallenge = challengeType == 'practice';
-      final sameSubject = challengeSubject.toLowerCase() == subject.toLowerCase();
-      final sameGrade = grade == null || grade.isEmpty || challengeGrade.toLowerCase() == grade.toLowerCase();
-      final sameUnit = unitNumber == null || unitNumber == 0 || challengeUnitNumber == unitNumber;
-      final isCompleted = data['isCompleted'] as bool? ?? false;
-
-      return isToday && isPracticeChallenge && sameSubject && sameGrade && sameUnit && !isCompleted;
+      return isPracticeChallenge && sameSubject && sameGrade && sameUnit && !isCompleted;
     }).toList();
 
-    final candidateDocs = matchingChallenges.isNotEmpty
+    final candidateChallenges = matchingChallenges.isNotEmpty
         ? matchingChallenges
-        : snapshot.docs.where((document) {
-            final data = document.data();
-            final challengeSubject = data['subject'] as String? ?? '';
-            final challengeType = data['challengeType'] as String? ?? '';
-            final scheduledDate = Challenge.fromMap(document.id, data).scheduledDate;
-            final isToday =
-                !scheduledDate.isBefore(startOfDay) &&
-                scheduledDate.isBefore(endOfDay);
-            final isPracticeChallenge = challengeType == 'practice';
-            final sameSubject = challengeSubject.toLowerCase() == subject.toLowerCase();
-            final isCompleted = data['isCompleted'] as bool? ?? false;
-            return isToday && isPracticeChallenge && sameSubject && !isCompleted;
+        : todayChallenges.where((challenge) {
+            final isPracticeChallenge = challenge.challengeType == 'practice';
+            final sameSubject = challenge.subject.toLowerCase() == subject.toLowerCase();
+            final isCompleted = challenge.isCompleted;
+            return isPracticeChallenge && sameSubject && !isCompleted;
           }).toList();
 
-    if (candidateDocs.isEmpty) {
+    if (candidateChallenges.isEmpty) {
       return;
     }
 
-    // For now, update the first matching challenge.
-    final document = candidateDocs.first;
-
-    final data = document.data();
-
-    final currentCount = (data['currentCount'] as num?)?.toInt() ?? 0;
-
-    final targetCount = (data['targetCount'] as num?)?.toInt() ?? 0;
+    final challenge = candidateChallenges.first;
+    final currentCount = challenge.currentCount;
+    final targetCount = challenge.targetCount;
 
     final rawNewCount = currentCount + count;
     final newCount = targetCount > 0
@@ -197,9 +256,31 @@ class ChallengeService {
 
     final completed = targetCount > 0 && newCount >= targetCount;
 
-    await document.reference.update({
-      'currentCount': newCount,
-      'isCompleted': completed,
-    });
+    await _storage.markChallengeProgressLocally(
+      challenge.id,
+      isCompleted: completed,
+    );
+    final updated = challenge.copyWith(
+      currentCount: newCount,
+      isCompleted: completed,
+    );
+    await _storage.saveChallengeLocally(updated);
+
+    try {
+      await _challengesCollection.doc(challenge.id).update({
+        'currentCount': newCount,
+        'isCompleted': completed,
+      }).timeout(const Duration(seconds: 4));
+    } catch (e) {
+      await _storage.queuePendingChallengeOp({
+        'opId': '${DateTime.now().millisecondsSinceEpoch}_increment_${challenge.id}',
+        'type': 'update',
+        'challengeId': challenge.id,
+        'data': {
+          'currentCount': newCount,
+          'isCompleted': completed,
+        },
+      });
+    }
   }
 }

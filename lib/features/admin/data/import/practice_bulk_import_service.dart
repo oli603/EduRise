@@ -1,6 +1,4 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-
-import '../../../practice/data/question_model.dart';
 import '../admin_service.dart';
 import '../audit_service.dart';
 import 'practice_bulk_import_models.dart';

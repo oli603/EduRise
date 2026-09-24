@@ -101,4 +101,41 @@ class AuditService {
         .map((doc) => AuditLogEntry.fromMap(doc.id, doc.data()))
         .toList();
   }
+
+  /// Delete a single audit log entry.
+  static Future<void> deleteAuditLog(String logId) async {
+    await _logsCollection.doc(logId).delete();
+  }
+
+  /// Delete multiple selected audit logs by their IDs.
+  static Future<int> deleteSelectedAuditLogs(List<String> logIds) async {
+    if (logIds.isEmpty) return 0;
+
+    final batch = _firestore.batch();
+    for (final id in logIds) {
+      batch.delete(_logsCollection.doc(id));
+    }
+    await batch.commit();
+    return logIds.length;
+  }
+
+  /// Delete all audit log entries.
+  static Future<int> deleteAllAuditLogs() async {
+    final snapshot = await _logsCollection.get();
+    if (snapshot.docs.isEmpty) return 0;
+
+    // Batch delete in chunks of 500 (Firestore batch limit)
+    const chunkSize = 450;
+    for (var i = 0; i < snapshot.docs.length; i += chunkSize) {
+      final end = (i + chunkSize < snapshot.docs.length) ? i + chunkSize : snapshot.docs.length;
+      final chunk = snapshot.docs.sublist(i, end);
+      final batch = _firestore.batch();
+      for (final doc in chunk) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+    }
+
+    return snapshot.docs.length;
+  }
 }

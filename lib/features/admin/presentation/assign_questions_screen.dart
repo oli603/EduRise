@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../practice/data/models/question_package_model.dart';
 import '../../practice/data/question_model.dart';
@@ -198,36 +199,60 @@ class _AssignQuestionsScreenState extends State<AssignQuestionsScreen> {
     });
   }
 
+  void _safeBack() {
+    if (context.canPop()) {
+      context.pop();
+    } else if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    } else {
+      context.go('/admin/question-packages/${widget.packageId}');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Assign Questions')),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _safeBack();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded),
+            tooltip: 'Back',
+            onPressed: _safeBack,
+          ),
+          title: const Text('Assign Questions'),
+        ),
 
-      body: SafeArea(child: _buildBody()),
+        body: SafeArea(child: _buildBody()),
 
-      bottomNavigationBar: _package == null || _isLoading
-          ? null
-          : SafeArea(
-              minimum: const EdgeInsets.all(16),
-              child: SizedBox(
-                height: 56,
-                child: ElevatedButton.icon(
-                  onPressed: _isSaving ? null : _saveAssignments,
-                  icon: _isSaving
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.save_outlined),
-                  label: Text(
-                    _isSaving
-                        ? 'Saving...'
-                        : 'Save ${_selectedQuestionIds.length} Questions',
+        bottomNavigationBar: _package == null || _isLoading
+            ? null
+            : SafeArea(
+                minimum: const EdgeInsets.all(16),
+                child: SizedBox(
+                  height: 56,
+                  child: ElevatedButton.icon(
+                    onPressed: _isSaving ? null : _saveAssignments,
+                    icon: _isSaving
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.save_outlined),
+                    label: Text(
+                      _isSaving
+                          ? 'Saving...'
+                          : 'Save ${_selectedQuestionIds.length} Questions',
+                    ),
                   ),
                 ),
               ),
-            ),
+      ),
     );
   }
 

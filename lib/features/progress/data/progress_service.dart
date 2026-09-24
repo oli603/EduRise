@@ -1,9 +1,14 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
+
+import '../../../core/offline/offline_storage_service.dart';
 
 class ProgressService {
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
+  final OfflineStorageService _storage = OfflineStorageService();
 
   ProgressService({
     FirebaseFirestore? firestore,
@@ -14,36 +19,113 @@ class ProgressService {
   CollectionReference<Map<String, dynamic>> get _resultsCollection =>
       _firestore.collection('practice_results');
 
-  /// Stream practice results for the current user in real-time.
+  CollectionReference<Map<String, dynamic>> get _pastExamResultsCollection =>
+      _firestore.collection('past_exam_results');
+
+  /// Stream practice and past exam results for the current user in real-time.
   Stream<List<Map<String, dynamic>>> getUserResultsStream() {
     final user = _auth.currentUser;
     if (user == null) {
       return Stream.value([]);
     }
 
-    return _resultsCollection
-        .where('userId', isEqualTo: user.uid)
-        .snapshots()
-        .map((snapshot) {
-      final list = snapshot.docs.map((document) {
-        return {'id': document.id, ...document.data()};
-      }).toList();
+    final controller = StreamController<List<Map<String, dynamic>>>.broadcast();
 
-      list.sort((a, b) {
-        final tA = a['timestamp'];
-        final tB = b['timestamp'];
-        DateTime dateA = DateTime.fromMillisecondsSinceEpoch(0);
-        DateTime dateB = DateTime.fromMillisecondsSinceEpoch(0);
-        if (tA is Timestamp) dateA = tA.toDate();
-        if (tB is Timestamp) dateB = tB.toDate();
-        return dateB.compareTo(dateA); // descending
+    // 1. Emit local results immediately
+    Future<void> emitLocal() async {
+      try {
+        final localResults = await _getAggregatedLocalResults(user.uid);
+        if (!controller.isClosed) {
+          controller.add(localResults);
+        }
+      } catch (e) {
+        debugPrint('ProgressService emitLocal error: $e');
+      }
+    }
+
+    emitLocal();
+
+    // 2. Listen to Firestore practice results if possible
+    StreamSubscription? practiceSub;
+    StreamSubscription? examSub;
+
+    try {
+      practiceSub = _resultsCollection
+          .where('userId', isEqualTo: user.uid)
+          .snapshots()
+          .listen((snapshot) async {
+        final remotePractice = snapshot.docs.map((d) => {'id': d.id, ...d.data()}).toList();
+        await _storage.cacheRemotePracticeResults(remotePractice);
+        final aggregated = await _getAggregatedLocalResults(user.uid);
+        if (!controller.isClosed) {
+          controller.add(aggregated);
+        }
+      }, onError: (e) {
+        debugPrint('ProgressService practice snapshot error: $e');
       });
 
-      return list;
-    });
+      examSub = _pastExamResultsCollection
+          .where('userId', isEqualTo: user.uid)
+          .snapshots()
+          .listen((snapshot) async {
+        final remoteExams = snapshot.docs.map((d) => {'id': d.id, ...d.data()}).toList();
+        await _storage.cacheRemotePastExamResults(remoteExams);
+        final aggregated = await _getAggregatedLocalResults(user.uid);
+        if (!controller.isClosed) {
+          controller.add(aggregated);
+        }
+      }, onError: (e) {
+        debugPrint('ProgressService exam snapshot error: $e');
+      });
+    } catch (e) {
+      debugPrint('ProgressService Firestore listener setup error: $e');
+    }
+
+    controller.onCancel = () {
+      practiceSub?.cancel();
+      examSub?.cancel();
+    };
+
+    return controller.stream;
   }
 
-  /// Get all practice results belonging to the current user.
+  Future<List<Map<String, dynamic>>> _getAggregatedLocalResults(String userId) async {
+    final localPractice = await _storage.getLocalPracticeResults(userId: userId);
+    final localExams = await _storage.getLocalPastExamResults(userId: userId);
+
+    final Map<String, Map<String, dynamic>> deduped = {};
+
+    for (final p in localPractice) {
+      final key = (p['localId'] ?? p['id'] ?? '') as String;
+      if (key.isNotEmpty) {
+        deduped[key] = p;
+      }
+    }
+
+    for (final e in localExams) {
+      final key = (e['localId'] ?? e['id'] ?? '') as String;
+      if (key.isNotEmpty) {
+        deduped[key] = e;
+      }
+    }
+
+    final list = deduped.values.toList();
+    list.sort((a, b) {
+      final tA = a['timestamp'] ?? a['completedAt'] ?? a['createdAt'];
+      final tB = b['timestamp'] ?? b['completedAt'] ?? b['createdAt'];
+      DateTime dateA = DateTime.fromMillisecondsSinceEpoch(0);
+      DateTime dateB = DateTime.fromMillisecondsSinceEpoch(0);
+      if (tA is Timestamp) dateA = tA.toDate();
+      if (tB is Timestamp) dateB = tB.toDate();
+      if (tA is String) dateA = DateTime.tryParse(tA) ?? dateA;
+      if (tB is String) dateB = DateTime.tryParse(tB) ?? dateB;
+      return dateB.compareTo(dateA); // descending
+    });
+
+    return list;
+  }
+
+  /// Get all practice and past exam results belonging to the current user.
   Future<List<Map<String, dynamic>>> getUserResults() async {
     final user = _auth.currentUser;
 
@@ -51,26 +133,28 @@ class ProgressService {
       throw Exception('No authenticated user found.');
     }
 
-    final snapshot = await _resultsCollection
-        .where('userId', isEqualTo: user.uid)
-        .get();
+    final userId = user.uid;
 
-    final results = snapshot.docs.map((document) {
-      return {'id': document.id, ...document.data()};
-    }).toList();
+    // Fetch remote results if available
+    try {
+      final practiceSnap = await _resultsCollection
+          .where('userId', isEqualTo: userId)
+          .get()
+          .timeout(const Duration(seconds: 4));
+      final remotePractice = practiceSnap.docs.map((d) => {'id': d.id, ...d.data()}).toList();
+      await _storage.cacheRemotePracticeResults(remotePractice);
+    } catch (_) {}
 
-    // Sort in memory to avoid Firestore composite index requirement
-    results.sort((a, b) {
-      final tA = a['timestamp'];
-      final tB = b['timestamp'];
-      DateTime dateA = DateTime.fromMillisecondsSinceEpoch(0);
-      DateTime dateB = DateTime.fromMillisecondsSinceEpoch(0);
-      if (tA is Timestamp) dateA = tA.toDate();
-      if (tB is Timestamp) dateB = tB.toDate();
-      return dateB.compareTo(dateA);
-    });
+    try {
+      final examSnap = await _pastExamResultsCollection
+          .where('userId', isEqualTo: userId)
+          .get()
+          .timeout(const Duration(seconds: 4));
+      final remoteExams = examSnap.docs.map((d) => {'id': d.id, ...d.data()}).toList();
+      await _storage.cacheRemotePastExamResults(remoteExams);
+    } catch (_) {}
 
-    return results;
+    return _getAggregatedLocalResults(userId);
   }
 
   /// Get total number of questions answered across all sessions.

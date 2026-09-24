@@ -1,5 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
+
+import '../../../core/offline/offline_storage_service.dart';
+import '../../practice/data/local/question_store.dart';
 
 class WeakArea {
   final String subject;
@@ -65,6 +69,7 @@ class WeakArea {
 class WeakAreasService {
   final FirebaseFirestore? _customFirestore;
   final FirebaseAuth? _customAuth;
+  final OfflineStorageService _storage = OfflineStorageService();
 
   WeakAreasService({
     FirebaseFirestore? firestore,
@@ -83,16 +88,39 @@ class WeakAreasService {
       throw Exception('No authenticated user found.');
     }
 
-    final snapshot = await _firestore
-        .collection('practice_results')
-        .where('userId', isEqualTo: user.uid)
-        .get();
+    final userId = user.uid;
 
+    // 1. Fetch remote results if online, cache them locally
+    try {
+      final snapshot = await _firestore
+          .collection('practice_results')
+          .where('userId', isEqualTo: userId)
+          .get()
+          .timeout(const Duration(seconds: 4));
+
+      final remoteResults = snapshot.docs.map((doc) => {'id': doc.id, ...doc.data()}).toList();
+      await _storage.cacheRemotePracticeResults(remoteResults);
+    } catch (e) {
+      debugPrint('WeakAreasService: offline or remote fetch error: $e');
+    }
+
+    // 2. Load all local practice results for user
+    final localResults = await _storage.getLocalPracticeResults(userId: userId);
+
+    // 3. Deduplicate results by localId / id
+    final Map<String, Map<String, dynamic>> dedupedMap = {};
+    for (final r in localResults) {
+      final key = (r['localId'] ?? r['id'] ?? '') as String;
+      if (key.isNotEmpty) {
+        dedupedMap[key] = r;
+      }
+    }
+    final allResults = dedupedMap.values.toList();
+
+    // 4. Group strictly by grade + subject + unitNumber + unitName
     final Map<String, List<Map<String, dynamic>>> groupedResults = {};
 
-    for (final document in snapshot.docs) {
-      final data = document.data();
-
+    for (final data in allResults) {
       final subject = data['subject'] as String? ?? 'Unknown';
       final grade = data['grade'] as String? ?? '';
       final unitNumber = (data['unitNumber'] as num?)?.toInt() ??
@@ -102,10 +130,9 @@ class WeakAreasService {
           (data['topic'] as String?) ??
           '';
 
-      // Group strictly by grade + subject + unitNumber + unitName
-      // to ensure identical unit names across different grades are never merged!
-      final key = '$grade|$subject|$unitNumber|$unitName';
+      if (subject.isEmpty || unitNumber <= 0) continue;
 
+      final key = '$grade|$subject|$unitNumber|$unitName';
       groupedResults.putIfAbsent(key, () => []);
       groupedResults[key]!.add(data);
     }
@@ -115,7 +142,7 @@ class WeakAreasService {
     for (final entry in groupedResults.entries) {
       final results = entry.value;
 
-      // Sort chronological from oldest to newest so latest attempt comes last
+      // Sort chronological from oldest to newest
       results.sort((a, b) {
         final tA = a['timestamp'];
         final tB = b['timestamp'];
@@ -123,6 +150,8 @@ class WeakAreasService {
         DateTime dateB = DateTime.fromMillisecondsSinceEpoch(0);
         if (tA is Timestamp) dateA = tA.toDate();
         if (tB is Timestamp) dateB = tB.toDate();
+        if (tA is String) dateA = DateTime.tryParse(tA) ?? dateA;
+        if (tB is String) dateB = DateTime.tryParse(tB) ?? dateB;
         return dateA.compareTo(dateB);
       });
 
@@ -175,31 +204,43 @@ class WeakAreasService {
         totalUnique = uniqueQuestions.length;
         correctUnique = uniqueQuestions.values.where((isCorrect) => isCorrect).length;
       } else {
-        // Legacy records fallback: check actual published questions in Firestore for this unit
-        int publishedCount = 0;
+        // Fallback: check offline questions stored locally first, then remote
+        int knownQuestions = 0;
         try {
-          var query = _firestore
-              .collection('questions')
-              .where('subject', isEqualTo: subject)
-              .where('unitNumber', isEqualTo: unitNumber)
-              .where('status', isEqualTo: 'published');
-          if (grade.isNotEmpty) {
-            query = query.where('grade', isEqualTo: grade);
+          final offlineQs = await QuestionStore().getOfflineQuestions(
+            grade: grade,
+            stream: stream ?? '',
+            subject: subject,
+            unitNumber: unitNumber,
+          );
+          knownQuestions = offlineQs.length;
+        } catch (_) {}
+
+        if (knownQuestions == 0) {
+          try {
+            var query = _firestore
+                .collection('questions')
+                .where('subject', isEqualTo: subject)
+                .where('unitNumber', isEqualTo: unitNumber)
+                .where('status', isEqualTo: 'published');
+            if (grade.isNotEmpty) {
+              query = query.where('grade', isEqualTo: grade);
+            }
+            final qSnap = await query.get().timeout(const Duration(seconds: 2));
+            knownQuestions = qSnap.docs.length;
+          } catch (_) {
+            knownQuestions = 0;
           }
-          final qSnap = await query.get();
-          publishedCount = qSnap.docs.length;
-        } catch (_) {
-          publishedCount = 0;
         }
 
-        if (publishedCount > 0) {
-          totalUnique = publishedCount;
-          uniqueCount = publishedCount;
+        if (knownQuestions > 0) {
+          totalUnique = knownQuestions;
+          uniqueCount = knownQuestions;
           final lastData = results.last;
           final lastTotal = (lastData['totalQuestions'] as num?)?.toInt() ?? 1;
           final lastCorrect = (lastData['correctAnswers'] as num?)?.toInt() ??
               (lastData['isCorrect'] == true ? 1 : 0);
-          if (publishedCount == 1) {
+          if (knownQuestions == 1) {
             correctUnique = lastCorrect > 0 ? 1 : 0;
           } else {
             correctUnique = lastTotal > 0
@@ -208,7 +249,6 @@ class WeakAreasService {
           }
           if (correctUnique > totalUnique) correctUnique = totalUnique;
         } else {
-          // Bounded fallback from session data
           int maxSessionQ = 0;
           for (final data in results) {
             final tQ = (data['totalQuestions'] as num?)?.toInt() ?? 1;
@@ -232,14 +272,15 @@ class WeakAreasService {
       final accuracy = ((correctUnique / totalUnique) * 100).round();
 
       // Debug logs required by Part 9
-      print('=== WEAK AREAS CALCULATION ===');
-      print('Content group: $grade | $subject | Unit $unitNumber');
-      print('Question IDs attempted: $allAttemptedIds');
-      print('Unique questions attempted: $uniqueCount');
-      print('Total unique questions: $totalUnique');
-      print('Correct unique questions: $correctUnique');
-      print('Accuracy: $accuracy%');
-      print('==============================');
+      debugPrint('=== WEAK AREAS CALCULATION ===');
+      debugPrint('Content group: $grade | $subject | Unit $unitNumber');
+      debugPrint('Question IDs attempted: $allAttemptedIds');
+      debugPrint('Unique questions attempted: $uniqueCount');
+      debugPrint('Total unique questions: $totalUnique');
+      debugPrint('Correct unique questions: $correctUnique');
+      debugPrint('Accuracy: $accuracy%');
+      debugPrint('==============================');
+
 
       weakAreas.add(
         WeakArea(

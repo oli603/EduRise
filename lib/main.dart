@@ -1,5 +1,10 @@
+import 'package:edurise/core/offline/connectivity_service.dart';
+import 'package:edurise/core/offline/offline_storage_service.dart';
+import 'package:edurise/core/offline/sync_service.dart';
 import 'package:edurise/core/routes/app_router.dart';
+import 'package:edurise/features/notifications/data/notification_service.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
@@ -11,9 +16,32 @@ import 'firebase_options.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 1. Initialize Firebase Core (Prerequisite for Firebase services)
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  await GoogleSignIn.instance.initialize();
-  await AppSettingsController.instance.initialize();
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
+  // 2. Initialize essential local services concurrently in parallel
+  await Future.wait([
+    AppSettingsController.instance.initialize(),
+    OfflineStorageService().init(),
+    NotificationService().initialize(),
+  ]);
+
+  // 3. Initialize on-demand auth providers non-blocking
+  GoogleSignIn.instance.initialize(
+    serverClientId: '935368980876-e77v60qedbufrhp0kj0ee0suaqujdmk1.apps.googleusercontent.com',
+  ).catchError((e) {
+    debugPrint('GoogleSignIn initialization: $e');
+  });
+
+  // 4. Start connectivity monitoring and background synchronization listener
+  final connectivity = ConnectivityService();
+  connectivity.startMonitoring();
+  connectivity.onConnectivityChanged.listen((isOnline) {
+    if (isOnline) {
+      SyncService().syncAll();
+    }
+  });
 
   runApp(const EduRiseApp());
 }

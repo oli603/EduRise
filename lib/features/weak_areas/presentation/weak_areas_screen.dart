@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../data/weak_areas_service.dart';
 
@@ -100,29 +101,34 @@ class _WeakAreasScreenState extends State<WeakAreasScreen> {
   }
 
   Widget _buildContent(BuildContext context, List<WeakArea> weakAreas) {
+    final colors = context.eduColors;
+
     if (weakAreas.isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(24),
+          padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.auto_graph_rounded, size: 60),
+              Icon(Icons.auto_graph_rounded, size: 60, color: colors.textSecondary),
 
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
 
               Text(
                 "No weak areas yet 🎉",
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: colors.textPrimary,
+                ),
               ),
 
-              SizedBox(height: 8),
+              const SizedBox(height: 8),
 
               Text(
-                "Complete some practice questions "
-                "and EduRise will identify where "
-                "you need more practice.",
+                "Complete some practice questions and EduRise will identify where you need more practice.",
                 textAlign: TextAlign.center,
+                style: TextStyle(color: colors.textSecondary),
               ),
             ],
           ),
@@ -133,17 +139,20 @@ class _WeakAreasScreenState extends State<WeakAreasScreen> {
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
-        const Text(
+        Text(
           "Know your gaps. Build your confidence.",
-          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            color: colors.textPrimary,
+          ),
         ),
 
         const SizedBox(height: AppSpacing.sm),
 
         Text(
-          "Focus on the topics where you need "
-          "the most practice.",
-          style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+          "Focus on the topics where you need the most practice.",
+          style: TextStyle(fontSize: 14, color: colors.textSecondary),
         ),
 
         const SizedBox(height: 28),
@@ -154,17 +163,21 @@ class _WeakAreasScreenState extends State<WeakAreasScreen> {
   }
 
   Widget _buildWeakArea(BuildContext context, WeakArea area) {
+    final colors = context.eduColors;
+    final primaryAccent = colors.isDark ? AppColors.primaryForDark : AppColors.primary;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.grey.shade200),
+        color: colors.cardBackground,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: colors.border),
         boxShadow: [
           BoxShadow(
-            // ignore: deprecated_member_use
-            color: Colors.black.withOpacity(0.04),
+            color: colors.isDark
+                ? Colors.black.withValues(alpha: 0.25)
+                : Colors.black.withValues(alpha: 0.04),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -179,13 +192,12 @@ class _WeakAreasScreenState extends State<WeakAreasScreen> {
                 height: 44,
                 width: 44,
                 decoration: BoxDecoration(
-                  // ignore: deprecated_member_use
-                  color: AppColors.primary.withOpacity(0.10),
-                  borderRadius: BorderRadius.circular(14),
+                  color: primaryAccent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.track_changes_rounded,
-                  color: AppColors.primary,
+                  color: primaryAccent,
                 ),
               ),
 
@@ -199,9 +211,10 @@ class _WeakAreasScreenState extends State<WeakAreasScreen> {
                       area.displayTitle,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
+                        color: colors.textPrimary,
                       ),
                     ),
                   ],
@@ -224,15 +237,16 @@ class _WeakAreasScreenState extends State<WeakAreasScreen> {
           LinearProgressIndicator(
             value: area.accuracy / 100,
             minHeight: 7,
+            backgroundColor: colors.border,
             borderRadius: BorderRadius.circular(10),
+            valueColor: AlwaysStoppedAnimation<Color>(_getAccuracyColor(area.accuracy)),
           ),
 
           const SizedBox(height: 10),
 
           Text(
-            "${area.correctAnswers} correct "
-            "out of ${area.totalQuestions}",
-            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            "${area.correctAnswers} correct out of ${area.totalQuestions}",
+            style: TextStyle(fontSize: 12, color: colors.textSecondary),
           ),
 
           const SizedBox(height: 16),

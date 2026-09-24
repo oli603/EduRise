@@ -1,16 +1,15 @@
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/user_role.dart';
+import '../../../core/routes/app_router.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../../core/theme/app_spacing.dart';
+import '../../auth/data/auth_service.dart';
 import '../../books/data/book_model.dart';
 import '../../books/data/book_service.dart';
 import '../../notifications/data/notification_model.dart';
 import '../../notifications/data/notification_service.dart';
-import '../../past_entrance_exams/data/past_exam_model.dart';
-import '../../past_entrance_exams/data/past_exam_service.dart';
 import '../../practice/data/models/question_package_model.dart';
 import '../../practice/data/question_model.dart';
 import '../data/admin_analytics_service.dart';
@@ -20,9 +19,10 @@ import '../data/admin_service.dart';
 import '../data/admin_settings_service.dart';
 import '../data/admin_student_service.dart';
 import '../data/audit_service.dart';
-import '../data/models/payment_model.dart';
-import '../data/payment_service.dart';
 import '../data/question_package_service.dart';
+import '../../payment/data/models/payment_submission.dart';
+import '../../payment/data/payment_admin_service.dart';
+import '../../coach/data/coach_service.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -57,6 +57,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     'Students',
     'Payments',
     'Content',
+    'Question Reports',
     'Monitoring',
     'Announcements',
     'Analytics',
@@ -70,6 +71,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     Icons.people_alt_rounded,
     Icons.payments_rounded,
     Icons.library_books_rounded,
+    Icons.flag_rounded,
     Icons.insights_rounded,
     Icons.campaign_rounded,
     Icons.analytics_rounded,
@@ -130,6 +132,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           const _StudentsView(),
           const _PaymentsView(),
           const _ContentView(),
+          const _QuestionReportsView(),
           const _MonitoringView(),
           const _AnnouncementsView(),
           const _AnalyticsView(),
@@ -196,7 +199,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 itemCount: _tabTitles.length,
                 itemBuilder: (context, index) {
                   final isSelected = _selectedTabIndex == index;
-                  final isFounderOnly = index == 8; // Admin Management
+                  final isFounderOnly = index == 9; // Admin Management
 
                   return ListTile(
                     selected: isSelected,
@@ -256,11 +259,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
               ),
               onTap: () async {
-                Navigator.of(context).pop();
-                AdminService.clearCache();
-                await FirebaseAuth.instance.signOut();
-                if (context.mounted) {
-                  context.go('/login');
+                try {
+                  Navigator.of(context).pop();
+                  await AuthService().signOut();
+                  AppRouter.router.go('/login');
+                } catch (e) {
+                  debugPrint('Admin sign out error: $e');
+                  AppRouter.router.go('/login');
                 }
               },
             ),
@@ -286,7 +291,7 @@ class _OverviewView extends StatefulWidget {
 
 class _OverviewViewState extends State<_OverviewView> {
   final AdminAnalyticsService _analyticsService = AdminAnalyticsService();
-  final PaymentService _paymentService = PaymentService();
+  final PaymentAdminService _paymentService = PaymentAdminService();
   late Future<AdminAnalyticsData> _analyticsFuture;
   late Future<List<PaymentSubmission>> _pendingPaymentsFuture;
 
@@ -518,7 +523,19 @@ class _OverviewViewState extends State<_OverviewView> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(title, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
                   Icon(icon, color: color, size: 20),
                 ],
               ),
@@ -627,12 +644,13 @@ class _StudentsViewState extends State<_StudentsView> {
             children: [
               Expanded(
                 child: DropdownButtonFormField<String>(
+                  isExpanded: true,
                   value: _statusFilter,
                   decoration: const InputDecoration(labelText: 'Status', contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
                   items: const [
-                    DropdownMenuItem(value: 'all', child: Text('All Access')),
-                    DropdownMenuItem(value: 'paid', child: Text('Paid Access')),
-                    DropdownMenuItem(value: 'unpaid', child: Text('Locked / Free')),
+                    DropdownMenuItem(value: 'all', child: Text('All Access', overflow: TextOverflow.ellipsis)),
+                    DropdownMenuItem(value: 'paid', child: Text('Paid Access', overflow: TextOverflow.ellipsis)),
+                    DropdownMenuItem(value: 'unpaid', child: Text('Locked / Free', overflow: TextOverflow.ellipsis)),
                   ],
                   onChanged: (val) {
                     if (val != null) {
@@ -645,14 +663,15 @@ class _StudentsViewState extends State<_StudentsView> {
               const SizedBox(width: 12),
               Expanded(
                 child: DropdownButtonFormField<String>(
+                  isExpanded: true,
                   value: _gradeFilter,
                   decoration: const InputDecoration(labelText: 'Grade', contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
                   items: const [
-                    DropdownMenuItem(value: 'all', child: Text('All Grades')),
-                    DropdownMenuItem(value: 'Grade 9', child: Text('Grade 9')),
-                    DropdownMenuItem(value: 'Grade 10', child: Text('Grade 10')),
-                    DropdownMenuItem(value: 'Grade 11', child: Text('Grade 11')),
-                    DropdownMenuItem(value: 'Grade 12', child: Text('Grade 12')),
+                    DropdownMenuItem(value: 'all', child: Text('All Grades', overflow: TextOverflow.ellipsis)),
+                    DropdownMenuItem(value: 'Grade 9', child: Text('Grade 9', overflow: TextOverflow.ellipsis)),
+                    DropdownMenuItem(value: 'Grade 10', child: Text('Grade 10', overflow: TextOverflow.ellipsis)),
+                    DropdownMenuItem(value: 'Grade 11', child: Text('Grade 11', overflow: TextOverflow.ellipsis)),
+                    DropdownMenuItem(value: 'Grade 12', child: Text('Grade 12', overflow: TextOverflow.ellipsis)),
                   ],
                   onChanged: (val) {
                     if (val != null) {
@@ -899,7 +918,7 @@ class _PaymentsView extends StatefulWidget {
 }
 
 class _PaymentsViewState extends State<_PaymentsView> with SingleTickerProviderStateMixin {
-  final PaymentService _paymentService = PaymentService();
+  final PaymentAdminService _paymentService = PaymentAdminService();
   late TabController _tabController;
 
   @override
@@ -945,7 +964,7 @@ class _PaymentsViewState extends State<_PaymentsView> with SingleTickerProviderS
 
 class _PaymentListTab extends StatefulWidget {
   final String status;
-  final PaymentService service;
+  final PaymentAdminService service;
 
   const _PaymentListTab({required this.status, required this.service});
 
@@ -1080,7 +1099,7 @@ class _PaymentListTabState extends State<_PaymentListTab> {
 
 class _PaymentReviewSheet extends StatefulWidget {
   final PaymentSubmission submission;
-  final PaymentService service;
+  final PaymentAdminService service;
   final VoidCallback onReviewed;
 
   const _PaymentReviewSheet({required this.submission, required this.service, required this.onReviewed});
@@ -1373,6 +1392,7 @@ class _ContentQuestionsTabState extends State<_ContentQuestionsTab> {
   List<Question> _questions = [];
   final Set<String> _selectedQuestionIds = {};
   bool _isLoading = true;
+  String? _errorMessage;
   bool _isBatchProcessing = false;
 
   @override
@@ -1384,6 +1404,7 @@ class _ContentQuestionsTabState extends State<_ContentQuestionsTab> {
   Future<void> _fetch() async {
     setState(() {
       _isLoading = true;
+      _errorMessage = null;
       _selectedQuestionIds.clear();
     });
     try {
@@ -1400,7 +1421,10 @@ class _ContentQuestionsTabState extends State<_ContentQuestionsTab> {
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _errorMessage = e.toString();
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error loading questions: $e')),
         );
@@ -1518,8 +1542,9 @@ class _ContentQuestionsTabState extends State<_ContentQuestionsTab> {
                 children: [
                   // Grade filter
                   SizedBox(
-                    width: 140,
+                    width: 155,
                     child: DropdownButtonFormField<String>(
+                      isExpanded: true,
                       initialValue: _selectedGrade,
                       decoration: const InputDecoration(
                         labelText: 'Grade',
@@ -1527,11 +1552,11 @@ class _ContentQuestionsTabState extends State<_ContentQuestionsTab> {
                         contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                       ),
                       items: const [
-                        DropdownMenuItem(value: 'all', child: Text('All Grades')),
-                        DropdownMenuItem(value: 'Grade 9', child: Text('Grade 9')),
-                        DropdownMenuItem(value: 'Grade 10', child: Text('Grade 10')),
-                        DropdownMenuItem(value: 'Grade 11', child: Text('Grade 11')),
-                        DropdownMenuItem(value: 'Grade 12', child: Text('Grade 12')),
+                        DropdownMenuItem(value: 'all', child: Text('All Grades', overflow: TextOverflow.ellipsis)),
+                        DropdownMenuItem(value: 'Grade 9', child: Text('Grade 9', overflow: TextOverflow.ellipsis)),
+                        DropdownMenuItem(value: 'Grade 10', child: Text('Grade 10', overflow: TextOverflow.ellipsis)),
+                        DropdownMenuItem(value: 'Grade 11', child: Text('Grade 11', overflow: TextOverflow.ellipsis)),
+                        DropdownMenuItem(value: 'Grade 12', child: Text('Grade 12', overflow: TextOverflow.ellipsis)),
                       ],
                       onChanged: (v) {
                         if (v != null) {
@@ -1544,8 +1569,9 @@ class _ContentQuestionsTabState extends State<_ContentQuestionsTab> {
 
                   // Subject filter
                   SizedBox(
-                    width: 140,
+                    width: 155,
                     child: DropdownButtonFormField<String>(
+                      isExpanded: true,
                       initialValue: _selectedSubject,
                       decoration: const InputDecoration(
                         labelText: 'Subject',
@@ -1553,15 +1579,15 @@ class _ContentQuestionsTabState extends State<_ContentQuestionsTab> {
                         contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                       ),
                       items: const [
-                        DropdownMenuItem(value: 'all', child: Text('All Subjects')),
-                        DropdownMenuItem(value: 'Biology', child: Text('Biology')),
-                        DropdownMenuItem(value: 'Chemistry', child: Text('Chemistry')),
-                        DropdownMenuItem(value: 'Physics', child: Text('Physics')),
-                        DropdownMenuItem(value: 'Mathematics', child: Text('Mathematics')),
-                        DropdownMenuItem(value: 'English', child: Text('English')),
-                        DropdownMenuItem(value: 'Economics', child: Text('Economics')),
-                        DropdownMenuItem(value: 'Geography', child: Text('Geography')),
-                        DropdownMenuItem(value: 'History', child: Text('History')),
+                        DropdownMenuItem(value: 'all', child: Text('All Subjects', overflow: TextOverflow.ellipsis)),
+                        DropdownMenuItem(value: 'Biology', child: Text('Biology', overflow: TextOverflow.ellipsis)),
+                        DropdownMenuItem(value: 'Chemistry', child: Text('Chemistry', overflow: TextOverflow.ellipsis)),
+                        DropdownMenuItem(value: 'Physics', child: Text('Physics', overflow: TextOverflow.ellipsis)),
+                        DropdownMenuItem(value: 'Mathematics', child: Text('Mathematics', overflow: TextOverflow.ellipsis)),
+                        DropdownMenuItem(value: 'English', child: Text('English', overflow: TextOverflow.ellipsis)),
+                        DropdownMenuItem(value: 'Economics', child: Text('Economics', overflow: TextOverflow.ellipsis)),
+                        DropdownMenuItem(value: 'Geography', child: Text('Geography', overflow: TextOverflow.ellipsis)),
+                        DropdownMenuItem(value: 'History', child: Text('History', overflow: TextOverflow.ellipsis)),
                       ],
                       onChanged: (v) {
                         if (v != null) {
@@ -1574,8 +1600,9 @@ class _ContentQuestionsTabState extends State<_ContentQuestionsTab> {
 
                   // Status filter
                   SizedBox(
-                    width: 140,
+                    width: 155,
                     child: DropdownButtonFormField<String>(
+                      isExpanded: true,
                       initialValue: _selectedStatus,
                       decoration: const InputDecoration(
                         labelText: 'Status',
@@ -1583,10 +1610,10 @@ class _ContentQuestionsTabState extends State<_ContentQuestionsTab> {
                         contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                       ),
                       items: const [
-                        DropdownMenuItem(value: 'all', child: Text('All Status')),
-                        DropdownMenuItem(value: 'published', child: Text('Published')),
-                        DropdownMenuItem(value: 'review', child: Text('Review')),
-                        DropdownMenuItem(value: 'draft', child: Text('Draft')),
+                        DropdownMenuItem(value: 'all', child: Text('All Status', overflow: TextOverflow.ellipsis)),
+                        DropdownMenuItem(value: 'published', child: Text('Published', overflow: TextOverflow.ellipsis)),
+                        DropdownMenuItem(value: 'review', child: Text('Review', overflow: TextOverflow.ellipsis)),
+                        DropdownMenuItem(value: 'draft', child: Text('Draft', overflow: TextOverflow.ellipsis)),
                       ],
                       onChanged: (v) {
                         if (v != null) {
@@ -1681,9 +1708,49 @@ class _ContentQuestionsTabState extends State<_ContentQuestionsTab> {
         Expanded(
           child: _isLoading
               ? const Center(child: CircularProgressIndicator())
-              : _questions.isEmpty
-                  ? const Center(child: Text('No questions found for selection.'))
-                  : ListView.separated(
+              : _errorMessage != null
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.error_outline_rounded, color: AppColors.error, size: 40),
+                            const SizedBox(height: 12),
+                            Text(
+                              'Failed to load questions:\n$_errorMessage',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: AppColors.error, fontSize: 14),
+                            ),
+                            const SizedBox(height: 16),
+                            FilledButton.icon(
+                              onPressed: _fetch,
+                              icon: const Icon(Icons.refresh_rounded, size: 18),
+                              label: const Text('Retry'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : _questions.isEmpty
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.quiz_outlined, size: 48, color: Colors.grey),
+                                const SizedBox(height: 12),
+                                Text(
+                                  'No questions found for selection.\nTry selecting "All Grades", "All Subjects", or importing new questions.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      : ListView.separated(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       itemCount: _questions.length,
                       separatorBuilder: (_, _) => const SizedBox(height: 10),
@@ -2122,44 +2189,6 @@ class _MonitoringView extends StatelessWidget {
             );
           },
         ),
-        const SizedBox(height: 16),
-
-        const Text('Recent Practice Attempts', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 10),
-
-        FutureBuilder<List<Map<String, dynamic>>>(
-          future: monitoring.getRecentPracticeAttempts(limit: 15),
-          builder: (context, snapshot) {
-            final attempts = snapshot.data ?? [];
-            if (attempts.isEmpty) {
-              return const Text('No recent practice attempts recorded.', style: TextStyle(color: AppColors.textSecondary));
-            }
-
-            return ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: attempts.length,
-              separatorBuilder: (_, _) => const Divider(height: 1),
-              itemBuilder: (context, index) {
-                final a = attempts[index];
-                final score = a['score'] ?? 0;
-                return ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: CircleAvatar(
-                    backgroundColor: (score >= 70 ? AppColors.success : Colors.orange).withOpacity(0.12),
-                    child: Text('$score%', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: score >= 70 ? AppColors.success : Colors.orange)),
-                  ),
-                  title: Text('${a['subject'] ?? 'Subject'} • Unit ${a['unitNumber'] ?? ''}'),
-                  subtitle: Text('${a['grade'] ?? ''} • ${a['correctAnswers'] ?? 0}/${a['totalQuestions'] ?? 0} correct'),
-                  trailing: Text(
-                    (a['createdAt'] != null ? (a['createdAt'] as dynamic).toDate().toString().substring(5, 16) : ''),
-                    style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
-                  ),
-                );
-              },
-            );
-          },
-        ),
       ],
     );
   }
@@ -2230,6 +2259,80 @@ class _AnnouncementsViewState extends State<_AnnouncementsView> {
     }
   }
 
+  Future<void> _deleteAnnouncement(AppNotification item) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete announcement?'),
+        content: const Text('This announcement will be removed from the sent announcements list.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await _notificationService.deleteNotification(item.id);
+      if (mounted) {
+        setState(() => _load());
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Announcement deleted.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error deleting announcement: $e')));
+      }
+    }
+  }
+
+  Future<void> _deleteAllAnnouncements() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete all announcements?'),
+        content: const Text('This will permanently remove all sent announcements/alerts.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text('Delete All'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      final count = await _notificationService.deleteAllAnnouncements();
+      if (mounted) {
+        setState(() => _load());
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Removed $count sent announcements/alerts.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error deleting all: $e')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListView(
@@ -2276,33 +2379,67 @@ class _AnnouncementsViewState extends State<_AnnouncementsView> {
           ),
         ),
         const SizedBox(height: 24),
-        const Text('Recently Sent Announcements & Alerts', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 12),
 
         FutureBuilder<List<AppNotification>>(
           future: _recentFuture,
           builder: (context, snapshot) {
             final list = snapshot.data ?? [];
-            if (list.isEmpty) return const Text('No recent notifications sent.', style: TextStyle(color: AppColors.textSecondary));
 
-            return ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: list.length,
-              separatorBuilder: (_, _) => const Divider(height: 12),
-              itemBuilder: (context, index) {
-                final item = list[index];
-                return ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: CircleAvatar(
-                    backgroundColor: AppColors.primary.withOpacity(0.1),
-                    child: const Icon(Icons.notifications_rounded, color: AppColors.primary, size: 20),
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Recently Sent Announcements & Alerts',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    if (list.isNotEmpty)
+                      TextButton.icon(
+                        onPressed: _deleteAllAnnouncements,
+                        icon: const Icon(Icons.delete_sweep_rounded, size: 18, color: AppColors.error),
+                        label: const Text('Delete All', style: TextStyle(color: AppColors.error, fontSize: 13, fontWeight: FontWeight.bold)),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                if (list.isEmpty)
+                  const Text('No recent notifications sent.', style: TextStyle(color: AppColors.textSecondary))
+                else
+                  ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: list.length,
+                    separatorBuilder: (_, _) => const Divider(height: 12),
+                    itemBuilder: (context, index) {
+                      final item = list[index];
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: CircleAvatar(
+                          backgroundColor: AppColors.primary.withOpacity(0.1),
+                          child: const Icon(Icons.notifications_rounded, color: AppColors.primary, size: 20),
+                        ),
+                        title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: Text('${item.body}\nTarget: ${item.userId == 'all' ? 'All Students' : item.userId}'),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(item.createdAt?.toString().substring(5, 16) ?? '', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                            const SizedBox(width: 4),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline_rounded, color: AppColors.error, size: 20),
+                              tooltip: 'Delete announcement',
+                              onPressed: () => _deleteAnnouncement(item),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
                   ),
-                  title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text('${item.body}\nTarget: ${item.userId == 'all' ? 'All Students' : item.userId}'),
-                  trailing: Text(item.createdAt?.toString().substring(5, 16) ?? '', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-                );
-              },
+              ],
             );
           },
         ),
@@ -2438,6 +2575,7 @@ class _AuditLogsView extends StatefulWidget {
 class _AuditLogsViewState extends State<_AuditLogsView> {
   late Future<List<AuditLogEntry>> _logsFuture;
   String _filter = 'all';
+  final Set<String> _selectedLogIds = {};
 
   @override
   void initState() {
@@ -2449,38 +2587,154 @@ class _AuditLogsViewState extends State<_AuditLogsView> {
     _logsFuture = AuditService.getAuditLogs(actionFilter: _filter);
   }
 
+  Future<void> _deleteSelected() async {
+    if (_selectedLogIds.isEmpty) return;
+
+    final count = _selectedLogIds.length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete selected audit entries?'),
+        content: Text('Are you sure you want to delete $count selected audit entry(s)? This action cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text('Delete Selected'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await AuditService.deleteSelectedAuditLogs(_selectedLogIds.toList());
+      if (mounted) {
+        setState(() {
+          _selectedLogIds.clear();
+          _load();
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Deleted $count audit log entry(s).')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error deleting logs: $e')));
+      }
+    }
+  }
+
+  Future<void> _deleteAll() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete all audit records?'),
+        content: const Text('This action cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text('Delete All'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      final count = await AuditService.deleteAllAuditLogs();
+      if (mounted) {
+        setState(() {
+          _selectedLogIds.clear();
+          _load();
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Deleted all $count audit log entries.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error deleting all logs: $e')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.all(16),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Column(
             children: [
-              const Expanded(
-                child: Text('Administrative Audit Trail', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              ),
-              const SizedBox(width: 8),
-              DropdownButton<String>(
-                value: _filter,
-                underline: const SizedBox.shrink(),
-                items: const [
-                  DropdownMenuItem(value: 'all', child: Text('All Actions')),
-                  DropdownMenuItem(value: 'payment_approved', child: Text('Payment Approved')),
-                  DropdownMenuItem(value: 'payment_rejected', child: Text('Payment Rejected')),
-                  DropdownMenuItem(value: 'question_deleted', child: Text('Question Deleted')),
-                  DropdownMenuItem(value: 'book_unit_added', child: Text('Book Added')),
-                  DropdownMenuItem(value: 'book_unit_deleted', child: Text('Book Deleted')),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Expanded(
+                    child: Text('Administrative Audit Trail', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  ),
+                  const SizedBox(width: 8),
+                  DropdownButton<String>(
+                    value: _filter,
+                    underline: const SizedBox.shrink(),
+                    items: const [
+                      DropdownMenuItem(value: 'all', child: Text('All Actions')),
+                      DropdownMenuItem(value: 'payment_approved', child: Text('Payment Approved')),
+                      DropdownMenuItem(value: 'payment_rejected', child: Text('Payment Rejected')),
+                      DropdownMenuItem(value: 'question_deleted', child: Text('Question Deleted')),
+                      DropdownMenuItem(value: 'book_unit_added', child: Text('Book Added')),
+                      DropdownMenuItem(value: 'book_unit_deleted', child: Text('Book Deleted')),
+                    ],
+                    onChanged: (v) {
+                      if (v != null) {
+                        setState(() {
+                          _filter = v;
+                          _selectedLogIds.clear();
+                          _load();
+                        });
+                      }
+                    },
+                  ),
                 ],
-                onChanged: (v) {
-                  if (v != null) {
-                    setState(() {
-                      _filter = v;
-                      _load();
-                    });
-                  }
-                },
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  if (_selectedLogIds.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: FilledButton.icon(
+                        onPressed: _deleteSelected,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.error,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        icon: const Icon(Icons.delete_outline_rounded, size: 16),
+                        label: Text('Delete Selected (${_selectedLogIds.length})'),
+                      ),
+                    ),
+                  const Spacer(),
+                  TextButton.icon(
+                    onPressed: _deleteAll,
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppColors.error,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    icon: const Icon(Icons.delete_sweep_rounded, size: 18),
+                    label: const Text('Delete All', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ],
               ),
             ],
           ),
@@ -2504,44 +2758,72 @@ class _AuditLogsViewState extends State<_AuditLogsView> {
                 separatorBuilder: (_, _) => const SizedBox(height: 8),
                 itemBuilder: (context, index) {
                   final log = logs[index];
+                  final isSelected = _selectedLogIds.contains(log.id);
+
                   return Card(
                     elevation: 0,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
-                      side: const BorderSide(color: AppColors.border),
+                      side: BorderSide(
+                        color: isSelected ? AppColors.primary : AppColors.border,
+                        width: isSelected ? 1.5 : 1.0,
+                      ),
                     ),
+                    color: isSelected ? AppColors.primary.withOpacity(0.04) : null,
                     child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Column(
+                      padding: const EdgeInsets.all(12),
+                      child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: AppColors.primary.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  log.action.replaceAll('_', ' ').toUpperCase(),
-                                  style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 10),
-                                ),
-                              ),
-                              Text(
-                                log.timestamp?.toString().substring(0, 16) ?? '',
-                                style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
-                              ),
-                            ],
+                          Checkbox(
+                            value: isSelected,
+                            activeColor: AppColors.primary,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                            onChanged: (val) {
+                              setState(() {
+                                if (val == true) {
+                                  _selectedLogIds.add(log.id);
+                                } else {
+                                  _selectedLogIds.remove(log.id);
+                                }
+                              });
+                            },
                           ),
-                          const SizedBox(height: 8),
-                          Text('Actor: ${log.actorEmail} (${log.actorRole})', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                          Text('Target: ${log.targetType} • ${log.targetId}', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                          if (log.metadata != null && log.metadata!.isNotEmpty) ...[
-                            const SizedBox(height: 4),
-                            Text('Metadata: ${log.metadata}', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
-                          ],
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primary.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        log.action.replaceAll('_', ' ').toUpperCase(),
+                                        style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 10),
+                                      ),
+                                    ),
+                                    Text(
+                                      log.timestamp?.toString().substring(0, 16) ?? '',
+                                      style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Text('Actor: ${log.actorEmail} (${log.actorRole})', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                                Text('Target: ${log.targetType} • ${log.targetId}', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                                if (log.metadata != null && log.metadata!.isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Text('Metadata: ${log.metadata}', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                                ],
+                              ],
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -2751,13 +3033,37 @@ class _SettingsViewState extends State<_SettingsView> {
   }
 
   Future<void> _save() async {
+    final telebirr = _telebirrController.text.trim();
+    final cbe = _cbeController.text.trim();
+    final cbeName = _cbeNameController.text.trim();
+    final priceParsed = double.tryParse(_priceController.text.trim());
+
+    if (telebirr.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a valid Telebirr account number.')),
+      );
+      return;
+    }
+    if (cbe.isEmpty || cbeName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter valid CBE account details.')),
+      );
+      return;
+    }
+    if (priceParsed == null || priceParsed <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a valid subscription price (greater than 0).')),
+      );
+      return;
+    }
+
     setState(() => _isSaving = true);
     try {
       final updated = SystemSettings(
-        cbeAccount: _cbeController.text.trim(),
-        cbeAccountName: _cbeNameController.text.trim(),
-        telebirrNumber: _telebirrController.text.trim(),
-        subscriptionPrice: double.tryParse(_priceController.text.trim()) ?? 500.0,
+        cbeAccount: cbe,
+        cbeAccountName: cbeName,
+        telebirrNumber: telebirr,
+        subscriptionPrice: priceParsed,
         maintenanceMode: _maintenance,
         announcementBanner: '',
       );
@@ -2765,11 +3071,21 @@ class _SettingsViewState extends State<_SettingsView> {
       await _settingsService.updateSettings(updated);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Settings saved successfully.'), backgroundColor: AppColors.success),
+          const SnackBar(
+            content: Text('Settings saved successfully and synchronized across EduRise.'),
+            backgroundColor: AppColors.success,
+          ),
         );
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to save settings: ${e.toString()}'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -2813,7 +3129,7 @@ class _SettingsViewState extends State<_SettingsView> {
                 TextField(
                   controller: _priceController,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Subscription Fee (ETB)'),
+                  decoration: const InputDecoration(labelText: 'Subscription Fee (Birr)'),
                 ),
               ],
             ),
@@ -2841,6 +3157,501 @@ class _SettingsViewState extends State<_SettingsView> {
             label: Text(_isSaving ? 'Saving Settings...' : 'Save Configuration'),
           ),
         ),
+      ],
+    );
+  }
+}
+
+// =========================================================================
+// QUESTION REPORTS VIEW (ADMIN)
+// =========================================================================
+
+class _QuestionReportsView extends StatefulWidget {
+  const _QuestionReportsView();
+
+  @override
+  State<_QuestionReportsView> createState() => _QuestionReportsViewState();
+}
+
+class _QuestionReportsViewState extends State<_QuestionReportsView> {
+  final CoachService _coachService = CoachService.instance;
+  bool _isLoading = true;
+  String _activeTab = 'questions'; // 'questions' or 'bugs'
+  String _statusFilter = 'all';
+  List<dynamic> _reports = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadReports();
+  }
+
+  Future<void> _loadReports() async {
+    setState(() => _isLoading = true);
+    try {
+      if (_activeTab == 'questions') {
+        final res = await _coachService.getAdminReports(
+          status: _statusFilter == 'all' ? null : _statusFilter,
+        );
+        if (mounted) {
+          setState(() {
+            _reports = res;
+            _isLoading = false;
+          });
+        }
+      } else {
+        // Load bug reports from Firestore
+        Query<Map<String, dynamic>> query =
+            FirebaseFirestore.instance.collection('bug_reports');
+        if (_statusFilter != 'all') {
+          query = query.where('status', isEqualTo: _statusFilter);
+        }
+        final snapshot = await query.get().timeout(const Duration(seconds: 5));
+        final Map<String, Map<String, dynamic>> aggregatedBugs = {};
+
+        for (final doc in snapshot.docs) {
+          final data = doc.data();
+          final category = data['category']?.toString() ?? 'Other';
+          final status = data['status']?.toString() ?? 'pending';
+          final key = '${category}_$status';
+          final reporterUid = data['uid']?.toString() ?? (data['email']?.toString() ?? '');
+          final detail = data['details']?.toString() ?? '';
+          final adminNotes = data['admin_notes']?.toString();
+
+          if (!aggregatedBugs.containsKey(key)) {
+            aggregatedBugs[key] = {
+              'id': doc.id,
+              'doc_ids': <String>[doc.id],
+              'category': category,
+              'status': status,
+              'admin_notes': adminNotes,
+              'reporterUids': reporterUid.isNotEmpty ? <String>[reporterUid] : <String>[],
+              'recentFeedback': detail.isNotEmpty ? <String>[detail] : <String>[],
+              'lastReportedAt': data['lastReportedAt'],
+            };
+          } else {
+            final agg = aggregatedBugs[key]!;
+            (agg['doc_ids'] as List<String>).add(doc.id);
+            if (reporterUid.isNotEmpty && !(agg['reporterUids'] as List<String>).contains(reporterUid)) {
+              (agg['reporterUids'] as List<String>).add(reporterUid);
+            }
+            if (detail.isNotEmpty && !(agg['recentFeedback'] as List<String>).contains(detail)) {
+              (agg['recentFeedback'] as List<String>).add(detail);
+            }
+            if (adminNotes != null && adminNotes.isNotEmpty) {
+              agg['admin_notes'] = adminNotes;
+            }
+          }
+        }
+
+        final items = aggregatedBugs.values.map((m) {
+          m['reportCount'] = (m['reporterUids'] as List).length;
+          return m;
+        }).toList();
+
+        items.sort((a, b) {
+          final countA = (a['reportCount'] as num?)?.toInt() ?? 1;
+          final countB = (b['reportCount'] as num?)?.toInt() ?? 1;
+          return countB.compareTo(countA);
+        });
+
+        if (mounted) {
+          setState(() {
+            _reports = items;
+            _isLoading = false;
+          });
+        }
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _reports = [];
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _showStatusDialog(Map<String, dynamic> report) async {
+    final reportId = report['id']?.toString() ?? '';
+    String selectedStatus = report['status']?.toString() ?? 'pending';
+    final notesController = TextEditingController(text: report['admin_notes']?.toString() ?? '');
+    final isBug = _activeTab == 'bugs';
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text(
+            isBug ? 'Review Bug Report' : 'Review Question Report',
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (isBug) ...[
+                  Text('Category: ${report['category'] ?? reportId}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  const SizedBox(height: 4),
+                  Text('Report count: ${report['reportCount'] ?? 1} student(s)'),
+                ] else ...[
+                  Text('Question ID: ${report['question_id']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  const SizedBox(height: 4),
+                  Text('Subject: ${report['subject'] ?? 'N/A'} • Grade: ${report['grade'] ?? 'N/A'}'),
+                ],
+                const SizedBox(height: 12),
+                const Text('Update Status:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                DropdownButton<String>(
+                  isExpanded: true,
+                  value: selectedStatus,
+                  items: const [
+                    DropdownMenuItem(value: 'pending', child: Text('Pending')),
+                    DropdownMenuItem(value: 'under_review', child: Text('Under Review')),
+                    DropdownMenuItem(value: 'resolved', child: Text('Resolved (Fixed)')),
+                    DropdownMenuItem(value: 'dismissed', child: Text('Dismissed (Invalid)')),
+                  ],
+                  onChanged: (v) {
+                    if (v != null) setDialogState(() => selectedStatus = v);
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: notesController,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    labelText: 'Admin Resolution Notes',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                try {
+                  if (isBug) {
+                    final docIds = (report['doc_ids'] as List?)?.cast<String>() ?? [reportId];
+                    final batch = FirebaseFirestore.instance.batch();
+                    for (final dId in docIds) {
+                      final ref = FirebaseFirestore.instance.collection('bug_reports').doc(dId);
+                      batch.set(ref, {
+                        'status': selectedStatus,
+                        'admin_notes': notesController.text.trim(),
+                        'updatedAt': FieldValue.serverTimestamp(),
+                      }, SetOptions(merge: true));
+                    }
+                    await batch.commit();
+                  } else {
+                    final docIds = (report['doc_ids'] as List?)?.cast<String>();
+                    await _coachService.updateReportStatus(
+                      reportId: reportId,
+                      status: selectedStatus,
+                      adminNotes: notesController.text.trim(),
+                      docIds: docIds,
+                    );
+                  }
+                  _loadReports();
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Report updated successfully.')),
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Failed to update: $e')),
+                    );
+                  }
+                }
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Issue & Report Tracker',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            IconButton(
+              icon: const Icon(Icons.refresh_rounded),
+              onPressed: _loadReports,
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Aggregated feedback and bug reports reported by students across the platform.',
+          style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 16),
+
+        // Category Segmented Control
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(
+              value: 'questions',
+              label: Text('Question Reports'),
+              icon: Icon(Icons.flag_rounded),
+            ),
+            ButtonSegment(
+              value: 'bugs',
+              label: Text('Bug Reports'),
+              icon: Icon(Icons.bug_report_rounded),
+            ),
+          ],
+          selected: {_activeTab},
+          onSelectionChanged: (set) {
+            setState(() {
+              _activeTab = set.first;
+              _loadReports();
+            });
+          },
+        ),
+
+        const SizedBox(height: 16),
+
+        // Status filter bar
+        Wrap(
+          spacing: 8,
+          children: ['all', 'pending', 'under_review', 'resolved', 'dismissed'].map((status) {
+            final isSelected = _statusFilter == status;
+            return ChoiceChip(
+              label: Text(status.replaceAll('_', ' ').toUpperCase(), style: const TextStyle(fontSize: 11)),
+              selected: isSelected,
+              onSelected: (selected) {
+                if (selected) {
+                  setState(() => _statusFilter = status);
+                  _loadReports();
+                }
+              },
+            );
+          }).toList(),
+        ),
+
+        const SizedBox(height: 16),
+
+        if (_isLoading)
+          const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator()))
+        else if (_reports.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(32),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Column(
+              children: [
+                const Icon(Icons.check_circle_outline_rounded, color: AppColors.success, size: 48),
+                const SizedBox(height: 12),
+                Text(
+                  _activeTab == 'questions'
+                      ? 'No question reports found for this filter.'
+                      : 'No bug reports found for this filter.',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+          )
+        else
+          ..._reports.map((r) {
+            final rMap = Map<String, dynamic>.from(r as Map);
+            final status = rMap['status']?.toString() ?? 'pending';
+            final isBug = _activeTab == 'bugs';
+
+            Color badgeColor;
+            if (status == 'resolved') {
+              badgeColor = Colors.green;
+            } else if (status == 'under_review') {
+              badgeColor = Colors.orange;
+            } else if (status == 'dismissed') {
+              badgeColor = Colors.grey;
+            } else {
+              badgeColor = Colors.red;
+            }
+
+            if (isBug) {
+              final category = rMap['category']?.toString() ?? rMap['id'] ?? 'Bug';
+              final count = rMap['reportCount'] ?? (rMap['reporterUids'] as List?)?.length ?? 1;
+              final feedbackList = (rMap['recentFeedback'] as List?)?.cast<dynamic>() ?? [];
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: badgeColor.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            status.toUpperCase(),
+                            style: TextStyle(color: badgeColor, fontWeight: FontWeight.bold, fontSize: 10),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          category,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                        const Spacer(),
+                        Text(
+                          '$count student report${count == 1 ? '' : 's'}',
+                          style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                    if (feedbackList.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Student Notes:',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                      ),
+                      const SizedBox(height: 4),
+                      ...feedbackList.take(3).map((f) => Padding(
+                            padding: const EdgeInsets.only(bottom: 2),
+                            child: Text(
+                              '• "$f"',
+                              style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+                            ),
+                          )),
+                    ],
+                    if (rMap['admin_notes'] != null && rMap['admin_notes'].toString().isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        'Admin Note: ${rMap['admin_notes']}',
+                        style: TextStyle(fontSize: 12, color: AppColors.primary.withValues(alpha: 0.8), fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                    const SizedBox(height: 10),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: () => _showStatusDialog(rMap),
+                          icon: const Icon(Icons.edit_note_rounded, size: 16),
+                          label: const Text('Update Status'),
+                          style: OutlinedButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            final count = rMap['report_count'] ?? (rMap['reporterUids'] as List?)?.length ?? 1;
+            final distinct = (rMap['distinct_students'] as List?)?.length ?? (rMap['reporterUids'] as List?)?.length ?? 1;
+            final reason = rMap['reason']?.toString() ?? 'Issue';
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: badgeColor.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          status.toUpperCase(),
+                          style: TextStyle(color: badgeColor, fontWeight: FontWeight.bold, fontSize: 10),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Reason: ${reason.replaceAll('_', ' ')}',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '$count reports ($distinct students)',
+                        style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Question ID: ${rMap['question_id']} • Subject: ${rMap['subject'] ?? 'N/A'} • Type: ${rMap['question_type']}',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                  ),
+                  if (rMap['details'] != null && rMap['details'].toString().isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      'Details: "${rMap['details']}"',
+                      style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+                    ),
+                  ],
+                  if (rMap['admin_notes'] != null && rMap['admin_notes'].toString().isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      'Admin Note: ${rMap['admin_notes']}',
+                      style: TextStyle(fontSize: 12, color: AppColors.primary.withValues(alpha: 0.8), fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: () => _showStatusDialog(rMap),
+                        icon: const Icon(Icons.edit_note_rounded, size: 16),
+                        label: const Text('Update Status'),
+                        style: OutlinedButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          }),
       ],
     );
   }

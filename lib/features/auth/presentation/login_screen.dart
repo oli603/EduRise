@@ -3,14 +3,16 @@ import 'package:edurise/core/widgets/auth_layout.dart';
 import 'package:edurise/features/auth/presentation/widgets/login_form.dart';
 
 class LoginScreen extends StatelessWidget {
-  const LoginScreen({super.key});
+  const LoginScreen({super.key, this.stream = ''});
+
+  final String stream;
 
   @override
   Widget build(BuildContext context) {
-    return const AuthLayout(
+    return AuthLayout(
       title: "Welcome Back",
       subtitle: "Sign in to continue your EduRise journey.",
-      child: LoginForm(),
+      child: LoginForm(stream: stream),
     );
   }
 }

@@ -12,8 +12,7 @@ class OnboardingScreen extends StatefulWidget {
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
   String _selectedStream = "Natural Science";
-  bool isNaturalSelected = false;
-  bool isSocialSelected = false;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -77,7 +76,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   text: "Continue",
                   onPressed: () {
                     context.go(
-                      '/auth?stream=${Uri.encodeComponent(isNaturalSelected ? 'Natural Science' : 'Social Science')}',
+                      '/auth?stream=${Uri.encodeComponent(_selectedStream)}',
                     );
                   },
                 ),

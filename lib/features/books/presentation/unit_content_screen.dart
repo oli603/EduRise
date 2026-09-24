@@ -1,10 +1,19 @@
-//import 'dart:io';
-
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../core/auth/session_manager.dart';
+import '../../../core/constants/app_subjects.dart';
+import '../../../core/offline/offline_storage_service.dart';
+import '../../../core/theme/app_colors.dart';
 import '../data/book_download_service.dart';
 import '../data/book_model.dart';
 import 'pdf_reader_screen.dart';
+import 'unit_summary_screen.dart';
+import 'unit_flashcards_screen.dart';
+import 'unit_ai_notes_screen.dart';
+import 'unit_understand_screen.dart';
+import 'unit_quiz_screen.dart';
 
 class UnitContentScreen extends StatefulWidget {
   final BookUnit unit;
@@ -23,6 +32,34 @@ class _UnitContentScreenState extends State<UnitContentScreen> {
   bool _isDownloading = false;
 
   double _downloadProgress = 0;
+
+  Future<bool> _verifyStreamAccess() async {
+    final gradeClean = widget.unit.grade.toLowerCase().replaceAll('grade', '').trim();
+    if (gradeClean == '9' || gradeClean == '10') {
+      return true; // Grades 9 & 10 are common foundational curriculum
+    }
+
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? SessionManager.currentUid;
+    if (uid != null) {
+      final profile = await OfflineStorageService.instance.getStudentProfile(uid);
+      final stream = profile?.stream ?? 'natural';
+      if (!EduRiseSubjects.isSubjectAllowedForStream(widget.unit.subject, stream)) {
+        if (mounted) {
+          final streamDisplay = EduRiseSubjects.displayStream(stream);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '${widget.unit.subject} is not part of the $streamDisplay curriculum.',
+              ),
+              backgroundColor: Colors.red.shade700,
+            ),
+          );
+        }
+        return false;
+      }
+    }
+    return true;
+  }
 
   @override
   void initState() {
@@ -145,8 +182,14 @@ class _UnitContentScreenState extends State<UnitContentScreen> {
               padding: const EdgeInsets.all(22),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(24),
-                // ignore: deprecated_member_use
-                color: Theme.of(context).colorScheme.primary.withOpacity(0.08),
+                color: Theme.of(context).colorScheme.primary.withValues(
+                      alpha: context.eduColors.isDark ? 0.16 : 0.08,
+                    ),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.primary.withValues(
+                        alpha: context.eduColors.isDark ? 0.3 : 0.15,
+                      ),
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -161,15 +204,16 @@ class _UnitContentScreenState extends State<UnitContentScreen> {
                   const SizedBox(height: 8),
                   Text(
                     unit.unitName,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
+                      color: context.eduColors.textPrimary,
                     ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     '${unit.subject} • ${unit.grade}',
-                    style: TextStyle(color: Colors.grey.shade600),
+                    style: TextStyle(color: context.eduColors.textSecondary),
                   ),
                 ],
               ),
@@ -186,35 +230,135 @@ class _UnitContentScreenState extends State<UnitContentScreen> {
 
             _buildBookCard(),
 
-            const SizedBox(height: 14),
+            const SizedBox(height: 24),
 
-            _LearningActionCard(
-              icon: Icons.auto_awesome_rounded,
-              title: 'AI Notes',
-              subtitle: 'Learn this unit deeply with AI',
-              enabled: false,
-              onTap: null,
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.auto_awesome_rounded,
+                    color: Theme.of(context).colorScheme.primary,
+                    size: 18,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  'EduRise Coach Tools',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+              ],
             ),
 
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
+
+            _LearningActionCard(
+              icon: Icons.article_rounded,
+              title: 'Unit Summary',
+              subtitle: 'Core concepts, highlights & exam takeaways',
+              enabled: true,
+              onTap: () async {
+                if (!await _verifyStreamAccess()) return;
+                if (!context.mounted) return;
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => UnitSummaryScreen(unit: unit),
+                  ),
+                );
+              },
+            ),
+
+            const SizedBox(height: 12),
 
             _LearningActionCard(
               icon: Icons.style_rounded,
               title: 'Flashcards',
-              subtitle: 'Review important concepts',
-              enabled: false,
-              onTap: null,
+              subtitle: 'Active recall key definitions and formulas',
+              enabled: true,
+              onTap: () async {
+                if (!await _verifyStreamAccess()) return;
+                if (!context.mounted) return;
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => UnitFlashcardsScreen(unit: unit),
+                  ),
+                );
+              },
             ),
 
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
+
+            _LearningActionCard(
+              icon: Icons.auto_awesome_rounded,
+              title: 'AI Study Notes',
+              subtitle: 'Structured in-depth notes with exam traps',
+              enabled: true,
+              onTap: () async {
+                if (!await _verifyStreamAccess()) return;
+                if (!context.mounted) return;
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => UnitAiNotesScreen(unit: unit),
+                  ),
+                );
+              },
+            ),
+
+            const SizedBox(height: 12),
+
+            _LearningActionCard(
+              icon: Icons.psychology_rounded,
+              title: 'I Don\'t Understand This Unit',
+              subtitle: 'Plain English teacher breakdown & analogies',
+              enabled: true,
+              onTap: () async {
+                if (!await _verifyStreamAccess()) return;
+                if (!context.mounted) return;
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => UnitUnderstandScreen(unit: unit),
+                  ),
+                );
+              },
+            ),
+
+            const SizedBox(height: 12),
+
+            _LearningActionCard(
+              icon: Icons.quiz_rounded,
+              title: 'Unit Quiz (7 Questions)',
+              subtitle: 'Quick self-check test for this specific unit',
+              enabled: true,
+              onTap: () async {
+                if (!await _verifyStreamAccess()) return;
+                if (!context.mounted) return;
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => UnitQuizScreen(unit: unit),
+                  ),
+                );
+              },
+            ),
+
+            const SizedBox(height: 12),
 
             _LearningActionCard(
               icon: Icons.edit_note_rounded,
-              title: 'Practice',
-              subtitle: 'Practice questions from this unit',
-              enabled: false,
-              onTap: null,
+              title: 'Curriculum Practice Questions',
+              subtitle: 'Practice national entrance questions for this unit',
+              enabled: true,
+              onTap: () {
+                context.push(
+                  '/practice?grade=${Uri.encodeComponent(unit.grade)}&subject=${Uri.encodeComponent(unit.subject)}&unitNumber=${unit.unitNumber}&unitName=${Uri.encodeComponent(unit.unitName)}',
+                );
+              },
             ),
+
+            const SizedBox(height: 20),
           ],
         ),
       ),
@@ -222,109 +366,83 @@ class _UnitContentScreenState extends State<UnitContentScreen> {
   }
 
   Widget _buildBookCard() {
+    final colors = context.eduColors;
+
     if (_checkingDownload) {
-      return const Card(
-        child: Padding(
-          padding: EdgeInsets.all(20),
-          child: Center(child: CircularProgressIndicator()),
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: colors.cardBackground,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: colors.border),
         ),
+        child: const Center(child: CircularProgressIndicator()),
       );
     }
 
     if (_isDownloading) {
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Row(
-                children: [
-                  Icon(Icons.downloading_rounded),
-                  SizedBox(width: 12),
-                  Text(
-                    'Downloading book...',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              LinearProgressIndicator(value: _downloadProgress),
-              const SizedBox(height: 8),
-              Text('${(_downloadProgress * 100).toStringAsFixed(0)}%'),
-            ],
-          ),
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: colors.cardBackground,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: colors.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.downloading_rounded, color: colors.textPrimary),
+                const SizedBox(width: 12),
+                Text(
+                  'Downloading book...',
+                  style: TextStyle(fontWeight: FontWeight.bold, color: colors.textPrimary),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            LinearProgressIndicator(
+              value: _downloadProgress,
+              backgroundColor: colors.border,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '${(_downloadProgress * 100).toStringAsFixed(0)}%',
+              style: TextStyle(color: colors.textSecondary, fontSize: 13),
+            ),
+          ],
         ),
       );
     }
 
     if (_isDownloaded) {
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Row(
-                children: [
-                  Icon(Icons.check_circle_rounded, color: Colors.green),
-                  SizedBox(width: 10),
-                  Text(
-                    'Book downloaded',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 16),
-
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: _openBook,
-                  icon: const Icon(Icons.menu_book_rounded),
-                  label: const Text('READ BOOK'),
-                ),
-              ),
-
-              const SizedBox(height: 8),
-
-              SizedBox(
-                width: double.infinity,
-                child: TextButton.icon(
-                  onPressed: _deleteBook,
-                  icon: const Icon(Icons.delete_outline),
-                  label: const Text('Remove Download'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Card(
-      child: Padding(
+      return Container(
+        width: double.infinity,
         padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: colors.cardBackground,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: colors.border),
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Row(
+            Row(
               children: [
-                Icon(Icons.picture_as_pdf_rounded),
-                SizedBox(width: 12),
+                const Icon(Icons.check_circle_rounded, color: AppColors.success),
+                const SizedBox(width: 10),
                 Text(
-                  'Unit Book',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                  'Book downloaded',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: colors.textPrimary,
+                    fontSize: 16,
+                  ),
                 ),
               ],
-            ),
-
-            const SizedBox(height: 8),
-
-            Text(
-              'Download this unit for offline reading.',
-              style: TextStyle(color: Colors.grey.shade600),
             ),
 
             const SizedBox(height: 16),
@@ -332,13 +450,67 @@ class _UnitContentScreenState extends State<UnitContentScreen> {
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: _downloadBook,
-                icon: const Icon(Icons.download_rounded),
-                label: const Text('DOWNLOAD BOOK'),
+                onPressed: _openBook,
+                icon: const Icon(Icons.menu_book_rounded),
+                label: const Text('READ BOOK'),
+              ),
+            ),
+
+            const SizedBox(height: 8),
+
+            SizedBox(
+              width: double.infinity,
+              child: TextButton.icon(
+                onPressed: _deleteBook,
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('Remove Download'),
               ),
             ),
           ],
         ),
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: colors.cardBackground,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: colors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.picture_as_pdf_rounded, color: colors.textPrimary),
+              const SizedBox(width: 12),
+              Text(
+                'Unit Book',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: colors.textPrimary),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 8),
+
+          Text(
+            'Download this unit for offline reading.',
+            style: TextStyle(color: colors.textSecondary),
+          ),
+
+          const SizedBox(height: 16),
+
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _downloadBook,
+              icon: const Icon(Icons.download_rounded),
+              label: const Text('DOWNLOAD BOOK'),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -361,6 +533,8 @@ class _LearningActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.eduColors;
+    final isDark = colors.isDark;
     final primary = Theme.of(context).colorScheme.primary;
 
     return Material(
@@ -371,9 +545,18 @@ class _LearningActionCard extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: enabled ? Colors.white : Colors.grey.shade50,
+            color: enabled ? colors.cardBackground : colors.surfaceSubtle,
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: Colors.grey.shade200),
+            border: Border.all(color: colors.border),
+            boxShadow: [
+              BoxShadow(
+                color: isDark
+                    ? Colors.black.withValues(alpha: 0.25)
+                    : Colors.black.withValues(alpha: 0.03),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
           child: Row(
             children: [
@@ -382,14 +565,13 @@ class _LearningActionCard extends StatelessWidget {
                 height: 48,
                 decoration: BoxDecoration(
                   color: enabled
-                      // ignore: deprecated_member_use
-                      ? primary.withOpacity(0.10)
-                      : Colors.grey.shade200,
+                      ? primary.withValues(alpha: isDark ? 0.2 : 0.10)
+                      : colors.surfaceSubtle,
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(
                   icon,
-                  color: enabled ? primary : Colors.grey.shade400,
+                  color: enabled ? primary : colors.textMuted,
                 ),
               ),
 
@@ -404,7 +586,7 @@ class _LearningActionCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
-                        color: enabled ? Colors.black87 : Colors.grey.shade500,
+                        color: enabled ? colors.textPrimary : colors.textMuted,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -413,8 +595,8 @@ class _LearningActionCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 13,
                         color: enabled
-                            ? Colors.grey.shade600
-                            : Colors.grey.shade400,
+                            ? colors.textSecondary
+                            : colors.textMuted,
                       ),
                     ),
                   ],
@@ -426,7 +608,7 @@ class _LearningActionCard extends StatelessWidget {
                     ? Icons.arrow_forward_ios_rounded
                     : Icons.lock_outline_rounded,
                 size: 17,
-                color: enabled ? Colors.grey.shade600 : Colors.grey.shade400,
+                color: enabled ? colors.textSecondary : colors.textMuted,
               ),
             ],
           ),

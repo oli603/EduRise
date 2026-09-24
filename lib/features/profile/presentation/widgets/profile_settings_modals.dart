@@ -1,13 +1,31 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/constants/app_grades.dart';
 import '../../../../core/constants/app_subjects.dart';
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/settings/app_settings_controller.dart';
 import '../../../../core/theme/app_colors.dart';
-import '../../../profile_setup/data/profile_service.dart';
+import '../../data/profile_service.dart';
 
 class ProfileSettingsModals {
   ProfileSettingsModals._();
+
+  static String _sanitizeError(dynamic error) {
+    final str = error.toString();
+    if (str.contains('network-request-failed') ||
+        str.contains('unavailable') ||
+        str.contains('deadline-exceeded') ||
+        str.contains('TimeoutException')) {
+      return 'Connection timed out. Please check your internet connection.';
+    }
+    if (str.contains('permission-denied')) {
+      return 'Permission denied. Please verify your sign-in session.';
+    }
+    if (str.contains('cannot change your stream')) {
+      return 'Stream is locked and cannot be changed.';
+    }
+    return 'Unable to update information. Please try again.';
+  }
 
   // ============================================================
   // EDIT PERSONAL INFORMATION DIALOG
@@ -19,8 +37,8 @@ class ProfileSettingsModals {
     required String currentStream,
   }) async {
     final nameController = TextEditingController(text: currentName);
-    String selectedStream = currentStream.isNotEmpty ? currentStream : 'Natural Science';
     final formKey = GlobalKey<FormState>();
+
     bool isSaving = false;
     final profileService = ProfileService();
     final l10n = AppLocalizations.of(context);
@@ -92,8 +110,9 @@ class ProfileSettingsModals {
                           } catch (e) {
                             setDialogState(() => isSaving = false);
                             if (dialogContext.mounted) {
+                              final msg = _sanitizeError(e);
                               ScaffoldMessenger.of(dialogContext).showSnackBar(
-                                SnackBar(content: Text('Error: $e')),
+                                SnackBar(content: Text(msg), backgroundColor: AppColors.error),
                               );
                             }
                           }
@@ -122,8 +141,8 @@ class ProfileSettingsModals {
     BuildContext context, {
     required String currentGrade,
   }) async {
-    const grades = ['Grade 9', 'Grade 10', 'Grade 11', 'Grade 12'];
-    String selectedGrade = currentGrade.isNotEmpty ? currentGrade : 'Grade 12';
+    final grades = EduRiseGrades.all;
+    String selectedGrade = currentGrade.isNotEmpty ? currentGrade : EduRiseGrades.grade12;
     bool isSaving = false;
     final profileService = ProfileService();
     final l10n = AppLocalizations.of(context);
@@ -172,8 +191,9 @@ class ProfileSettingsModals {
                           } catch (e) {
                             setDialogState(() => isSaving = false);
                             if (dialogContext.mounted) {
+                              final msg = _sanitizeError(e);
                               ScaffoldMessenger.of(dialogContext).showSnackBar(
-                                SnackBar(content: Text('Error: $e')),
+                                SnackBar(content: Text(msg), backgroundColor: AppColors.error),
                               );
                             }
                           }
@@ -372,53 +392,155 @@ class ProfileSettingsModals {
         return ListenableBuilder(
           listenable: settings,
           builder: (context, _) {
+            final currentMode = settings.themeMode;
+            final isDark = Theme.of(context).brightness == Brightness.dark;
+            final primaryColor = isDark ? AppColors.primaryForDark : AppColors.primary;
+            final surfaceColor = isDark ? AppColors.surfaceDark : Colors.white;
+            final textColor = isDark ? AppColors.textPrimaryDark : AppColors.textPrimary;
+            final subtitleColor = isDark ? AppColors.textSecondaryDark : AppColors.textSecondary;
+
+            Widget buildThemeOption({
+              required ThemeMode mode,
+              required String title,
+              required String subtitle,
+              required IconData icon,
+            }) {
+              final isSelected = currentMode == mode;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Material(
+                  color: isSelected
+                      ? primaryColor.withValues(alpha: isDark ? 0.2 : 0.08)
+                      : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(
+                      color: isSelected
+                          ? primaryColor
+                          : (isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+                      width: isSelected ? 1.5 : 1.0,
+                    ),
+                  ),
+                  child: InkWell(
+                    onTap: () {
+                      settings.setThemeMode(mode);
+                      Navigator.pop(dialogContext);
+                    },
+                    borderRadius: BorderRadius.circular(12),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? primaryColor.withValues(alpha: 0.15)
+                                  : (isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              icon,
+                              size: 20,
+                              color: isSelected ? primaryColor : subtitleColor,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  title,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                                    color: textColor,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  subtitle,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: subtitleColor,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Icon(
+                            isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                            size: 22,
+                            color: isSelected ? primaryColor : subtitleColor.withValues(alpha: 0.5),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }
+
             return AlertDialog(
-              title: Text(l10n.appearance, style: const TextStyle(fontWeight: FontWeight.bold)),
+              backgroundColor: surfaceColor,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+              contentPadding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: primaryColor.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.palette_outlined, size: 22, color: primaryColor),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    l10n.appearance,
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: textColor,
+                    ),
+                  ),
+                ],
+              ),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  RadioListTile<ThemeMode>(
-                    title: Text(l10n.themeSystem),
-                    subtitle: const Text('Match device settings'),
-                    value: ThemeMode.system,
-                    groupValue: settings.themeMode,
-                    onChanged: (mode) {
-                      if (mode != null) {
-                        settings.setThemeMode(mode);
-                        Navigator.pop(dialogContext);
-                      }
-                    },
+                  buildThemeOption(
+                    mode: ThemeMode.system,
+                    title: l10n.themeSystem,
+                    subtitle: 'Match device system settings',
+                    icon: Icons.brightness_auto_rounded,
                   ),
-                  RadioListTile<ThemeMode>(
-                    title: Text(l10n.themeLight),
-                    subtitle: const Text('Clean white background'),
-                    value: ThemeMode.light,
-                    groupValue: settings.themeMode,
-                    onChanged: (mode) {
-                      if (mode != null) {
-                        settings.setThemeMode(mode);
-                        Navigator.pop(dialogContext);
-                      }
-                    },
+                  buildThemeOption(
+                    mode: ThemeMode.light,
+                    title: l10n.themeLight,
+                    subtitle: 'Crisp, bright daylight interface',
+                    icon: Icons.light_mode_rounded,
                   ),
-                  RadioListTile<ThemeMode>(
-                    title: Text(l10n.themeDark),
-                    subtitle: const Text('Easy on the eyes in low light'),
-                    value: ThemeMode.dark,
-                    groupValue: settings.themeMode,
-                    onChanged: (mode) {
-                      if (mode != null) {
-                        settings.setThemeMode(mode);
-                        Navigator.pop(dialogContext);
-                      }
-                    },
+                  buildThemeOption(
+                    mode: ThemeMode.dark,
+                    title: l10n.themeDark,
+                    subtitle: 'Deep, calm slate for low light',
+                    icon: Icons.dark_mode_rounded,
                   ),
                 ],
               ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(dialogContext),
-                  child: Text(l10n.close),
+                  style: TextButton.styleFrom(
+                    foregroundColor: primaryColor,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  ),
+                  child: Text(l10n.close, style: const TextStyle(fontWeight: FontWeight.w600)),
                 ),
               ],
             );

@@ -2,23 +2,48 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_spacing.dart';
+import '../../../core/theme/app_text_styles.dart';
 
+/// Modern, responsive Quick Access action grid for the EduRise Home screen.
+///
+/// Delivers direct 1-tap entry points to key student modules with
+/// theme-aware styling, high-contrast typography, and accessible touch targets.
 class QuickAccessSection extends StatelessWidget {
-  const QuickAccessSection({super.key});
+  final String? studentGrade;
+
+  const QuickAccessSection({
+    super.key,
+    this.studentGrade,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.eduColors;
+    final resolvedGrade = studentGrade ?? 'Grade 12';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        const Text(
-          "Quick Access",
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        // ====================================================
+        // SECTION HEADER
+        // ====================================================
+        Text(
+          'Quick Access',
+          style: AppTextStyles.headingMedium.copyWith(
+            color: colors.textPrimary,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.2,
+          ),
         ),
 
-        const SizedBox(height: AppSpacing.md),
+        const SizedBox(height: AppSpacing.sm),
 
+        // ====================================================
+        // 2-COLUMN RESPONSIVE ACTION GRID
+        // ====================================================
         GridView.count(
           crossAxisCount: 2,
           shrinkWrap: true,
@@ -29,68 +54,58 @@ class QuickAccessSection extends StatelessWidget {
           children: [
             _buildQuickAccessCard(
               context,
-              icon: Icons.edit_note_rounded,
-              title: "Practice",
-              subtitle: "Solve questions",
-              onTap: () {
-                context.push('/practice-selection');
-              },
+              icon: Icons.emoji_events_rounded,
+              iconColor: Colors.amber.shade600,
+              title: 'Challenges',
+              subtitle: 'Build your streak',
+              onTap: () => context.push('/challenges'),
+            ),
+
+            _buildQuickAccessCard(
+              context,
+              icon: Icons.history_edu_rounded,
+              iconColor: colors.isDark ? const Color(0xFF60A5FA) : const Color(0xFF2563EB),
+              title: 'Past Entrance Exams',
+              subtitle: 'National exams',
+              onTap: () => context.push('/past-entrance-exams'),
+            ),
+
+            _buildQuickAccessCard(
+              context,
+              icon: Icons.psychology_rounded,
+              iconColor: colors.isDark ? const Color(0xFFA78BFA) : const Color(0xFF7C3AED),
+              title: 'Predicted Mock Exam',
+              subtitle: 'Exam Blueprint',
+              onTap: () => context.push('/predicted-mock-exam'),
             ),
 
             _buildQuickAccessCard(
               context,
               icon: Icons.track_changes_rounded,
-              title: "Weak Areas",
-              subtitle: "Find your gaps",
-              onTap: () {
-                context.push('/weak-areas');
-              },
+              iconColor: colors.isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7),
+              title: 'Weak Areas',
+              subtitle: 'Find your gaps',
+              onTap: () => context.push('/weak-areas'),
             ),
 
             _buildQuickAccessCard(
               context,
               icon: Icons.calendar_month_rounded,
-              title: "Study Plan",
-              subtitle: "Plan your study",
-              onTap: () {
-                context.push('/study-plan');
-              },
+              iconColor: colors.isDark ? const Color(0xFF34D399) : const Color(0xFF059669),
+              title: 'Study Plan',
+              subtitle: 'Plan your study',
+              onTap: () => context.push('/study-plan'),
             ),
 
-            _buildQuickAccessCard(
-              context,
-              icon: Icons.bar_chart_rounded,
-              title: "Progress",
-              subtitle: "See your growth",
-              onTap: () {
-                context.push('/progress');
-              },
-            ),
-
-            _buildQuickAccessCard(
-              context,
-              icon: Icons.emoji_events_rounded,
-              title: "Challenges",
-              subtitle: "Build your streak",
-              onTap: () {
-                context.push('/challenges');
-              },
-            ),
-
-            _buildQuickAccessCard(
-              context,
-              icon: Icons.auto_awesome_rounded,
-              title: "AI Coach",
-              subtitle: "Get guidance",
-            ),
             _buildQuickAccessCard(
               context,
               icon: Icons.menu_book_rounded,
-              title: "Books",
-              subtitle: "Learn by unit",
+              iconColor: colors.isDark ? const Color(0xFF818CF8) : const Color(0xFF4F46E5),
+              title: 'Books',
+              subtitle: 'Learn by unit',
               onTap: () {
                 context.push(
-                  '/books?grade=${Uri.encodeComponent("Grade 12")}&subject=${Uri.encodeComponent("Mathematics")}',
+                  '/books?grade=${Uri.encodeComponent(resolvedGrade)}&subject=${Uri.encodeComponent("Mathematics")}',
                 );
               },
             ),
@@ -103,82 +118,95 @@ class QuickAccessSection extends StatelessWidget {
   Widget _buildQuickAccessCard(
     BuildContext context, {
     required IconData icon,
+    required Color iconColor,
     required String title,
     required String subtitle,
-    VoidCallback? onTap,
+    required VoidCallback onTap,
   }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap:
-            onTap ??
-            () {
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(SnackBar(content: Text("$title coming soon.")));
-            },
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: Colors.grey.shade200),
-            boxShadow: [
-              BoxShadow(
-                // ignore: deprecated_member_use
-                color: Colors.black.withOpacity(0.04),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
+    final colors = context.eduColors;
+
+    return Semantics(
+      button: true,
+      label: '$title, $subtitle',
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: colors.cardBackground,
+              borderRadius: BorderRadius.circular(AppRadius.lg),
+              border: Border.all(
+                color: colors.border.withValues(alpha: 0.8),
+                width: 1,
               ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Container(
-                height: 40,
-                width: 40,
-                decoration: BoxDecoration(
-                  // ignore: deprecated_member_use
-                  color: AppColors.primary.withOpacity(0.10),
-                  borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: colors.isDark
+                      ? Colors.black.withValues(alpha: 0.28)
+                      : Colors.black.withValues(alpha: 0.03),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
                 ),
-                child: Icon(icon, color: AppColors.primary, size: 22),
-              ),
-
-              const SizedBox(width: 10),
-
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                      ),
+              ],
+            ),
+            child: Row(
+              children: [
+                // Intentional branded icon container
+                Container(
+                  height: 42,
+                  width: 42,
+                  decoration: BoxDecoration(
+                    color: iconColor.withValues(alpha: colors.isDark ? 0.20 : 0.12),
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                  ),
+                  child: Center(
+                    child: Icon(
+                      icon,
+                      color: iconColor,
+                      size: 22,
                     ),
-
-                    const SizedBox(height: 3),
-
-                    Text(
-                      subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ],
+
+                const SizedBox(width: 10),
+
+                // Title and Subtitle with clear hierarchy
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.cardTitle.copyWith(
+                          color: colors.textPrimary,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.caption.copyWith(
+                          color: colors.textSecondary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

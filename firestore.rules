@@ -186,14 +186,14 @@ service cloud.firestore {
 
     match /questions/{questionId} {
       // Students can ONLY read published questions.
-      // Free students can test with Grade 12, 2017 EC questions across all subjects.
+      // Free students can test strictly with Grade 12, Unit 1, 2017 EC questions across applicable subjects.
       // Paid students and Admins have full access to published questions.
       allow read: if isAuthorizedAdmin()
                   || (
                     isSignedIn()
                     && resource.data.status == 'published'
                     && (
-                      (resource.data.grade == 'Grade 12' && resource.data.examYear == 2017)
+                      (resource.data.grade == 'Grade 12' && resource.data.examYear == 2017 && resource.data.unitNumber == 1)
                       || isPaidStudent()
                     )
                   );
@@ -301,12 +301,14 @@ service cloud.firestore {
     // ============================================================
 
     match /past_exams/{examId} {
-      allow read: if isSignedIn();
+      // Past entrance exams are strictly locked for free students; requires paid subscription or admin
+      allow read: if isAuthorizedAdmin() || isPaidStudent();
       allow create, update, delete: if isAuthorizedAdmin();
     }
 
     match /past_exam_questions/{questionId} {
-      allow read: if isSignedIn();
+      // Past entrance exam questions are strictly locked for free students; requires paid subscription or admin
+      allow read: if isAuthorizedAdmin() || isPaidStudent();
       allow create, update, delete: if isAuthorizedAdmin();
     }
 
@@ -373,11 +375,11 @@ service cloud.firestore {
                     && (resource.data.userId in [request.auth.uid, 'all'] || resource.data.userId == request.auth.uid || resource.data.userId == 'all')
                   );
 
-      // Admin can send notifications; Students can only trigger payment alert notifications
+      // Admin can send notifications; Students can trigger alert notifications
       allow create: if isAuthorizedAdmin()
                     || (
                       isSignedIn()
-                      && request.resource.data.type == 'admin_alert'
+                      && request.resource.data.type in ['admin_alert', 'bug_report']
                     );
 
       // Student can only toggle 'isRead' on own notifications; Admin has full update
@@ -399,17 +401,94 @@ service cloud.firestore {
     match /audit_logs/{logId} {
       allow read: if isAuthorizedAdmin();
       allow create: if isAuthorizedAdmin();
-      allow update, delete: if false; // Immutable audit trail
+      allow update: if false;
+      allow delete: if isAuthorizedAdmin();
     }
 
 
     // ============================================================
-    // 13. SYSTEM SETTINGS
+    // 13. SYSTEM SETTINGS (MAINTENANCE MODE & ANNOUNCEMENTS)
     // ============================================================
 
     match /system_settings/{settingId} {
-      allow read: if isSignedIn();
-      allow write: if isAuthorizedAdmin();
+      // System settings (maintenance state, announcement banner, payment accounts)
+      // must be readable by all clients (including students and unauthenticated users)
+      // so maintenance mode and payment instructions can be received.
+      allow read: if true;
+      // Only authorized administrators can update system settings.
+      allow create, update, delete: if isAuthorizedAdmin();
+    }
+
+
+    // ============================================================
+    // 14. QUESTION ACCURACY REPORTS
+    // ============================================================
+
+    match /question_reports/{reportId} {
+      // Only authorized Admin & Founder can view student question reports
+      allow read: if isAuthorizedAdmin();
+
+      // Authenticated students can create their own question report.
+      // - Must be signed in.
+      // - Must set uid == request.auth.uid (no impersonation).
+      // - Status must be 'pending' on creation (cannot self-resolve).
+      // - Cannot set admin_notes or client-manipulated report_count.
+      allow create: if isSignedIn()
+                    && request.resource.data.uid == request.auth.uid
+                    && (!('status' in request.resource.data) || request.resource.data.status == 'pending')
+                    && !('admin_notes' in request.resource.data)
+                    && !('report_count' in request.resource.data);
+
+      // Updates:
+      // Case 1: Authorized admin / founder has full update authority (status, admin_notes, etc.)
+      // Case 2: Student can update feedback/details on retry for their own report,
+      //         but CANNOT touch status, admin_notes, or transfer ownership.
+      allow update: if isAuthorizedAdmin()
+                    || (
+                      isSignedIn()
+                      && resource.data.uid == request.auth.uid
+                      && request.resource.data.uid == request.auth.uid
+                      && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'admin_notes', 'uid', 'report_count'])
+                    );
+
+      // Only authorized Admin & Founder can delete/resolve reports
+      allow delete: if isAuthorizedAdmin();
+    }
+
+
+    // ============================================================
+    // 15. SYSTEM BUG REPORTS
+    // ============================================================
+
+    match /bug_reports/{reportId} {
+      // Only authorized Admin & Founder can view student bug reports
+      allow read: if isAuthorizedAdmin();
+
+      // Authenticated students can create their own bug report.
+      // - Must be signed in.
+      // - Must set uid == request.auth.uid (no impersonation).
+      // - Status must be 'pending' on creation.
+      // - Cannot set admin_notes or client-manipulated reportCount.
+      allow create: if isSignedIn()
+                    && request.resource.data.uid == request.auth.uid
+                    && (!('status' in request.resource.data) || request.resource.data.status == 'pending')
+                    && !('admin_notes' in request.resource.data)
+                    && !('reportCount' in request.resource.data);
+
+      // Updates:
+      // Case 1: Authorized admin / founder has full update authority (status, admin_notes, etc.)
+      // Case 2: Student can update feedback/details on retry for their own report,
+      //         but CANNOT touch status, admin_notes, or transfer ownership.
+      allow update: if isAuthorizedAdmin()
+                    || (
+                      isSignedIn()
+                      && resource.data.uid == request.auth.uid
+                      && request.resource.data.uid == request.auth.uid
+                      && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'admin_notes', 'uid', 'reportCount'])
+                    );
+
+      // Only authorized Admin & Founder can delete/resolve bug reports
+      allow delete: if isAuthorizedAdmin();
     }
 
 

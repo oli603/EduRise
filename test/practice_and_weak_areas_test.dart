@@ -676,7 +676,11 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await tester.runAsync(() async {
+        await Future.delayed(const Duration(milliseconds: 200));
+      });
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
 
       // Verify Grade 9 is initially selected
       expect(find.text('Grade 9'), findsOneWidget);
@@ -685,11 +689,18 @@ void main() {
       final subjectDropdown = find.text('Select subject');
       expect(subjectDropdown, findsOneWidget);
       await tester.tap(subjectDropdown, warnIfMissed: false);
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
 
       final biologyItem = find.text('Biology').last;
       await tester.tap(biologyItem);
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.runAsync(() async {
+        await Future.delayed(const Duration(milliseconds: 200));
+      });
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
 
       expect(find.text('Biology'), findsOneWidget);
 
@@ -697,11 +708,18 @@ void main() {
       final yearDropdown = find.text('2017 EC');
       expect(yearDropdown, findsOneWidget);
       await tester.tap(yearDropdown, warnIfMissed: false);
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
 
       final year2016 = find.text('2016 EC').last;
       await tester.tap(year2016);
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.runAsync(() async {
+        await Future.delayed(const Duration(milliseconds: 200));
+      });
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
 
       expect(find.text('2016 EC'), findsOneWidget);
       // Biology is still selected
@@ -719,9 +737,10 @@ void main() {
 
       // Validation check
       expect(selectedGrade, isNotNull);
-      expect(selectedSubject, isNotNull);
       expect(selectedUnitNumber > 0, isTrue);
       expect(selectedYear, isNotNull);
+      expect(selectedStream, isNotNull);
+
 
       // Question dataset containing real question
       final dataset = [

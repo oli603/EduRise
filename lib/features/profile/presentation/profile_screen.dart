@@ -1,13 +1,15 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/localization/app_localizations.dart';
+import '../../../core/offline/offline_storage_service.dart';
 import '../../../core/settings/app_settings_controller.dart';
+import '../../../core/auth/role_service.dart';
+import '../../../core/routes/app_router.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../admin/data/admin_service.dart';
-import '../../profile_setup/data/profile_service.dart';
+import '../../auth/data/auth_service.dart';
+import '../data/profile_service.dart';
 import 'widgets/profile_settings_modals.dart';
 
 class ProfileScreen extends StatelessWidget {
@@ -23,27 +25,28 @@ class ProfileScreen extends StatelessWidget {
     return ListenableBuilder(
       listenable: settings,
       builder: (context, _) {
-        return Scaffold(
-          appBar: AppBar(
-            title: Text(
-              l10n.profile,
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
-          ),
-          body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-            stream: profileStream,
-            builder: (context, snapshot) {
-              final studentData = snapshot.data?.data() ?? {};
+        return StreamBuilder<StudentProfileRecord?>(
+          stream: profileStream,
+          builder: (context, snapshot) {
+              final profile = snapshot.data;
               final user = FirebaseAuth.instance.currentUser;
 
-              final name = (studentData['name'] as String?)?.trim().isNotEmpty == true
-                  ? studentData['name'] as String
+              final name = (profile?.name.trim().isNotEmpty == true)
+                  ? profile!.name
                   : (user?.displayName ?? 'EduRise Student');
 
-              final email = (studentData['email'] as String?) ?? user?.email ?? '';
-              final grade = (studentData['grade'] as String?) ?? 'Grade 12';
-              final stream = (studentData['stream'] as String?) ?? 'Natural Science';
-              final isPaid = studentData['isPaid'] == true || studentData['accessStatus'] == 'active';
+              final email = (profile?.email?.isNotEmpty == true)
+                  ? profile!.email!
+                  : (user?.email ?? '');
+              final grade = (profile?.grade.isNotEmpty == true)
+                  ? profile!.grade
+                  : 'Grade 12';
+              final stream = (profile?.stream.isNotEmpty == true)
+                  ? (profile!.stream.toLowerCase().contains('social')
+                      ? 'Social Science'
+                      : 'Natural Science')
+                  : 'Natural Science';
+              final isPaid = profile?.isPaid == true || profile?.accessStatus == 'active';
 
               return ListView(
                 padding: const EdgeInsets.all(20),
@@ -85,7 +88,7 @@ class ProfileScreen extends StatelessWidget {
                   // =====================================================
                   // ADMIN DASHBOARD SHORTCUT (IF AUTHORIZED)
                   // =====================================================
-                  if (AdminService.isAuthorizedAdmin) ...[
+                  if (RoleService.isAuthorizedAdmin) ...[
                     Card(
                       color: Colors.indigo.shade50,
                       elevation: 0,
@@ -281,10 +284,12 @@ class ProfileScreen extends StatelessWidget {
                     height: 52,
                     child: OutlinedButton.icon(
                       onPressed: () async {
-                        AdminService.clearCache();
-                        await FirebaseAuth.instance.signOut();
-                        if (context.mounted) {
-                          context.go('/login');
+                        try {
+                          await AuthService().signOut();
+                          AppRouter.router.go('/login');
+                        } catch (e) {
+                          debugPrint('Profile sign out error: $e');
+                          AppRouter.router.go('/login');
                         }
                       },
                       icon: const Icon(Icons.logout_rounded),
@@ -296,9 +301,8 @@ class ProfileScreen extends StatelessWidget {
                 ],
               );
             },
-          ),
-        );
-      },
-    );
+          );
+        },
+      );
   }
 }

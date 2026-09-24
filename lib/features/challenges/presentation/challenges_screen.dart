@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/access_service.dart';
+import '../../../core/constants/app_subjects.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/access_locked_dialog.dart';
 import '../../practice/data/question_service.dart';
+import '../../profile/data/profile_service.dart';
 import '../data/challenge_generator.dart';
 import '../data/challenge_model.dart';
 import '../data/challenge_service.dart';
@@ -23,8 +25,10 @@ class ChallengesScreen extends StatefulWidget {
 class _ChallengesScreenState extends State<ChallengesScreen> {
   late final ChallengeService _challengeService;
   late final ChallengeGenerator _challengeGenerator;
+  final ProfileService _profileService = ProfileService();
 
   late Future<List<Challenge>> _challengesFuture;
+  String _studentStream = 'natural';
 
   @override
   void initState() {
@@ -63,6 +67,13 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
   }
 
   Future<List<Challenge>> _loadTodayChallenges(String userId) async {
+    try {
+      final profile = await _profileService.getProfile(uid: userId);
+      if (profile != null && profile.stream.isNotEmpty) {
+        _studentStream = EduRiseSubjects.isSocialStream(profile.stream) ? 'social' : 'natural';
+      }
+    } catch (_) {}
+
     final today = DateTime.now();
 
     // First, check whether today's challenge already exists.
@@ -89,7 +100,7 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
 
     for (final challenge in challenges) {
       if (challenge.challengeType == 'practice' && challenge.subject.isNotEmpty) {
-        final stream = QuestionService.normalizeStream(null, subject: challenge.subject);
+        final stream = QuestionService.normalizeStream(_studentStream, subject: challenge.subject);
         try {
           final questions = await questionService.getQuestions(
             grade: challenge.grade,
@@ -206,7 +217,10 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
                 ...challenges.map(
                   (challenge) => Padding(
                     padding: const EdgeInsets.only(bottom: AppSpacing.md),
-                    child: _ChallengeCard(challenge: challenge),
+                    child: _ChallengeCard(
+                      challenge: challenge,
+                      stream: _studentStream,
+                    ),
                   ),
                 ),
               ],
@@ -273,11 +287,16 @@ class _ChallengeHeader extends StatelessWidget {
 
 class _ChallengeCard extends StatelessWidget {
   final Challenge challenge;
+  final String stream;
 
-  const _ChallengeCard({required this.challenge});
+  const _ChallengeCard({
+    required this.challenge,
+    this.stream = 'natural',
+  });
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.eduColors;
     final target = challenge.targetCount;
 
     final progress = target <= 0
@@ -289,13 +308,13 @@ class _ChallengeCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colors.cardBackground,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: isCompleted
               // ignore: deprecated_member_use
               ? AppColors.success.withOpacity(0.35)
-              : AppColors.border,
+              : colors.border,
         ),
         boxShadow: [
           BoxShadow(
@@ -341,9 +360,10 @@ class _ChallengeCard extends StatelessWidget {
                   children: [
                     Text(
                       challenge.title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.w700,
+                        color: colors.textPrimary,
                       ),
                     ),
 
@@ -352,7 +372,7 @@ class _ChallengeCard extends StatelessWidget {
                     Text(
                       challenge.description,
                       style: TextStyle(
-                        color: Colors.grey.shade600,
+                        color: colors.textSecondary,
                         height: 1.4,
                       ),
                     ),
@@ -371,9 +391,10 @@ class _ChallengeCard extends StatelessWidget {
             children: [
               Text(
                 '${challenge.currentCount} / ${challenge.targetCount}',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
+                  color: colors.textPrimary,
                 ),
               ),
 
@@ -384,7 +405,7 @@ class _ChallengeCard extends StatelessWidget {
                 style: TextStyle(
                   color: isCompleted
                       ? AppColors.success
-                      : AppColors.textSecondary,
+                      : colors.textSecondary,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -401,7 +422,7 @@ class _ChallengeCard extends StatelessWidget {
             child: LinearProgressIndicator(
               value: progress,
               minHeight: 9,
-              backgroundColor: AppColors.border,
+              backgroundColor: colors.border,
               valueColor: AlwaysStoppedAnimation<Color>(
                 isCompleted ? AppColors.success : AppColors.primary,
               ),
@@ -425,15 +446,21 @@ class _ChallengeCard extends StatelessWidget {
 
               Text(
                 '+${challenge.rewardXp} XP',
-                style: const TextStyle(fontWeight: FontWeight.w700),
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: colors.textPrimary,
+                ),
               ),
 
               const Spacer(),
 
               if (isCompleted)
-                const Text(
+                Text(
                   '🎉 Great job!',
-                  style: TextStyle(fontWeight: FontWeight.w700),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: colors.textPrimary,
+                  ),
                 ),
             ],
           ),
@@ -454,33 +481,35 @@ class _ChallengeCard extends StatelessWidget {
                       }
 
                       // Required debug logs from Part 9
-                      print('=== CHALLENGE START ===');
-                      print('Challenge title: ${challenge.title}');
-                      print('Grade: ${challenge.grade}');
-                      print('Subject: ${challenge.subject}');
-                      print('Unit number: ${challenge.unitNumber}');
-                      print('Unit name: ${challenge.unitName}');
-                      print('Target count: ${challenge.targetCount}');
-                      print('=======================');
+                      debugPrint('=== CHALLENGE START ===');
+                      debugPrint('Challenge title: ${challenge.title}');
+                      debugPrint('Grade: ${challenge.grade}');
+                      debugPrint('Subject: ${challenge.subject}');
+                      debugPrint('Unit number: ${challenge.unitNumber}');
+                      debugPrint('Unit name: ${challenge.unitName}');
+                      debugPrint('Target count: ${challenge.targetCount}');
+                      debugPrint('=======================');
 
-                      final stream = QuestionService.normalizeStream(
-                        null,
+                      final normalizedStream = QuestionService.normalizeStream(
+                        stream,
                         subject: challenge.subject,
                       );
 
                       final count = challenge.targetCount > 0 ? challenge.targetCount : 1;
 
+                      if (!context.mounted) return;
                       context.push(
+
                         '/practice'
                         '?grade=${Uri.encodeComponent(challenge.grade)}'
-                        '&stream=${Uri.encodeComponent(stream)}'
+                        '&stream=${Uri.encodeComponent(normalizedStream)}'
                         '&subject=${Uri.encodeComponent(challenge.subject)}'
                         '&unitNumber=${challenge.unitNumber}'
                         '&unitName=${Uri.encodeComponent(challenge.unitName)}'
                         '&questionCount=$count',
                         extra: {
                           'grade': challenge.grade,
-                          'stream': stream,
+                          'stream': normalizedStream,
                           'subject': challenge.subject,
                           'unitNumber': challenge.unitNumber,
                           'unitName': challenge.unitName,
@@ -511,6 +540,7 @@ class _EmptyChallengeState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.eduColors;
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(AppSpacing.lg),
@@ -520,15 +550,15 @@ class _EmptyChallengeState extends StatelessWidget {
         Icon(
           Icons.emoji_events_outlined,
           size: 80,
-          color: Colors.grey.shade400,
+          color: colors.textSecondary.withValues(alpha: 0.5),
         ),
 
         const SizedBox(height: 20),
 
-        const Text(
+        Text(
           'No challenges today',
           textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: colors.textPrimary),
         ),
 
         const SizedBox(height: 8),
@@ -536,7 +566,7 @@ class _EmptyChallengeState extends StatelessWidget {
         Text(
           'Keep practicing and EduRise will create a challenge for you.',
           textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.grey.shade600, fontSize: 15),
+          style: TextStyle(color: colors.textSecondary, fontSize: 15),
         ),
       ],
     );
@@ -555,6 +585,7 @@ class _ErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.eduColors;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.lg),
@@ -570,10 +601,10 @@ class _ErrorState extends StatelessWidget {
 
               const SizedBox(height: 16),
 
-              const Text(
+              Text(
                 'Challenge Loading Error',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: colors.textPrimary),
               ),
 
               const SizedBox(height: 12),
@@ -582,12 +613,13 @@ class _ErrorState extends StatelessWidget {
                 width: double.infinity,
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
+                  color: colors.cardBackground,
                   borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: colors.border),
                 ),
                 child: Text(
                   error,
-                  style: const TextStyle(fontSize: 13, height: 1.5),
+                  style: TextStyle(fontSize: 13, height: 1.5, color: colors.textSecondary),
                 ),
               ),
 
