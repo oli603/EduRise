@@ -5,14 +5,14 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   Widget createTestWidget(Widget child) {
-    return MaterialApp(
-      home: child,
-    );
+    return MaterialApp(home: child);
   }
 
   group('ImportPracticeQuestionsScreen Widget Tests', () {
     testWidgets('renders all 4 steps and action buttons', (tester) async {
-      await tester.pumpWidget(createTestWidget(const ImportPracticeQuestionsScreen()));
+      await tester.pumpWidget(
+        createTestWidget(const ImportPracticeQuestionsScreen()),
+      );
 
       expect(find.text('Import Practice Questions'), findsOneWidget);
       expect(find.text('Step 1 — Add Files'), findsOneWidget);
@@ -27,7 +27,9 @@ void main() {
     });
 
     testWidgets('renders summary cards with initial counts', (tester) async {
-      await tester.pumpWidget(createTestWidget(const ImportPracticeQuestionsScreen()));
+      await tester.pumpWidget(
+        createTestWidget(const ImportPracticeQuestionsScreen()),
+      );
 
       expect(find.text('Files'), findsOneWidget);
       expect(find.text('Questions found'), findsOneWidget);
@@ -35,10 +37,35 @@ void main() {
       expect(find.text('⚠ Need review'), findsOneWidget);
       expect(find.text('✕ Invalid'), findsOneWidget);
     });
+
+    testWidgets('renders with full-width production button theme', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(
+            outlinedButtonTheme: OutlinedButtonThemeData(
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 52),
+              ),
+            ),
+          ),
+          home: const ImportPracticeQuestionsScreen(),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      expect(find.text('Step 4 — Import'), findsOneWidget);
+      expect(find.text('Cancel'), findsOneWidget);
+      expect(find.text('🚀 IMPORT ALL'), findsOneWidget);
+    });
   });
 
   group('ImportPastExamsScreen Widget Tests', () {
-    testWidgets('renders all 4 steps for past exam bulk import', (tester) async {
+    testWidgets('renders all 4 steps for past exam bulk import', (
+      tester,
+    ) async {
       await tester.pumpWidget(createTestWidget(const ImportPastExamsScreen()));
 
       expect(find.text('Import Past Entrance Exams'), findsOneWidget);

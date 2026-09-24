@@ -208,7 +208,9 @@ class _BooksScreenState extends State<BooksScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      canPop: true,
+      child: Scaffold(
       backgroundColor: context.eduColors.scaffoldBackground,
       appBar: AppBar(
         title: Text('$_selectedSubject • $_selectedGrade'),
@@ -339,6 +341,7 @@ class _BooksScreenState extends State<BooksScreen> {
             ),
           ),
         ],
+      ),
       ),
     );
   }

@@ -1256,6 +1256,9 @@ class _ImportPracticeQuestionsScreenState
           children: [
             OutlinedButton(
               onPressed: _isImporting ? null : () => Navigator.pop(context),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(0, 44),
+              ),
               child: const Text('Cancel'),
             ),
             const SizedBox(width: 12),
