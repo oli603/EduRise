@@ -151,27 +151,44 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.eduColors;
+
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: colors.scaffoldBackground,
       appBar: AppBar(
         title: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.15),
+                color: (colors.isDark ? AppColors.primaryForDark : AppColors.primary)
+                    .withValues(alpha: 0.15),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.auto_awesome_rounded, color: AppColors.primary, size: 20),
+              child: Icon(
+                Icons.auto_awesome_rounded,
+                color: colors.isDark ? AppColors.primaryForDark : AppColors.primary,
+                size: 20,
+              ),
             ),
             const SizedBox(width: 10),
-            const Column(
+            Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('EduRise Coach', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                Text(
+                  'EduRise Coach',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: colors.textPrimary,
+                  ),
+                ),
                 Text(
                   'Ethiopian Curriculum Tutor',
-                  style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: colors.textSecondary,
+                  ),
                 ),
               ],
             ),
@@ -185,16 +202,16 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.1),
+                    color: colors.primary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+                    border: Border.all(color: colors.primary.withValues(alpha: 0.2)),
                   ),
                   child: Text(
                     '${_quotaStatus!['quota_remaining'] ?? 0} Left Today',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.bold,
-                      color: AppColors.primary,
+                      color: colors.isDark ? AppColors.primaryForDark : AppColors.primary,
                     ),
                   ),
                 ),
@@ -215,14 +232,21 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
               itemBuilder: (context, index) {
                 final sub = _subjects[index];
                 final isSelected = _selectedSubject == sub;
-                final colors = context.eduColors;
                 return Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: FilterChip(
-                    label: Text(sub, style: TextStyle(fontSize: 12, color: isSelected ? Colors.white : colors.textPrimary)),
+                    label: Text(
+                      sub,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isSelected ? Colors.white : colors.textPrimary,
+                      ),
+                    ),
                     selected: isSelected,
                     selectedColor: colors.primary,
                     checkmarkColor: Colors.white,
+                    backgroundColor: colors.surfaceSubtle,
+                    side: BorderSide(color: colors.border),
                     onSelected: (val) {
                       setState(() {
                         _selectedSubject = sub;
@@ -234,7 +258,7 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
             ),
           ),
 
-          const Divider(height: 1),
+          Divider(height: 1, color: colors.border),
 
           // Messages list
           Expanded(
@@ -265,7 +289,7 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
                   const SizedBox(width: 10),
                   Text(
                     'EduRise Coach is thinking...',
-                    style: TextStyle(fontSize: 12, color: context.eduColors.textSecondary),
+                    style: TextStyle(fontSize: 12, color: colors.textSecondary),
                   ),
                 ],
               ),
@@ -285,7 +309,12 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
                   return Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: ActionChip(
-                      label: Text(prompt, style: const TextStyle(fontSize: 12)),
+                      backgroundColor: colors.surfaceSubtle,
+                      side: BorderSide(color: colors.border),
+                      label: Text(
+                        prompt,
+                        style: TextStyle(fontSize: 12, color: colors.textPrimary),
+                      ),
                       onPressed: () => _sendMessage(prompt),
                     ),
                   );

@@ -1,8 +1,10 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/auth/data/auth_service.dart';
+import '../../features/notifications/data/notification_service.dart';
 import '../../features/profile/data/profile_service.dart';
 import '../auth/role_service.dart';
 import '../offline/offline_storage_service.dart';
@@ -126,7 +128,9 @@ class _AppShellState extends State<AppShell> {
 
     switch (currentIndex) {
       case 0:
-        return null;
+        return [
+          _buildNotificationAction(context),
+        ];
       case 1:
         return [
           IconButton(
@@ -162,6 +166,56 @@ class _AppShellState extends State<AppShell> {
       default:
         return null;
     }
+  }
+
+  Widget _buildNotificationAction(BuildContext context) {
+    final colors = context.eduColors;
+    Stream<int> stream = const Stream.empty();
+    try {
+      if (Firebase.apps.isNotEmpty) {
+        stream = NotificationService().streamUnreadCount();
+      }
+    } catch (_) {}
+
+    return StreamBuilder<int>(
+      stream: stream,
+      builder: (context, snapshot) {
+        final unreadCount = snapshot.data ?? 0;
+        return Padding(
+          padding: const EdgeInsets.only(right: 6),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              IconButton(
+                tooltip: unreadCount > 0 ? 'Notifications ($unreadCount unread)' : 'Notifications',
+                icon: Icon(
+                  unreadCount > 0 ? Icons.notifications_active_rounded : Icons.notifications_outlined,
+                  color: unreadCount > 0
+                      ? (colors.isDark ? AppColors.primaryForDark : AppColors.primary)
+                      : colors.textSecondary,
+                  size: 24,
+                ),
+                onPressed: () => context.push('/notifications'),
+              ),
+              if (unreadCount > 0)
+                Positioned(
+                  top: 10,
+                  right: 10,
+                  child: Container(
+                    width: 9,
+                    height: 9,
+                    decoration: BoxDecoration(
+                      color: AppColors.error,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: colors.cardBackground, width: 1.5),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   // ============================================================

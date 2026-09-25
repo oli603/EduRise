@@ -623,12 +623,18 @@ class AppRouter {
       // ==========================================================
       GoRoute(
         path: '/admin',
-        builder: (context, state) => const AdminDashboardScreen(),
+        builder: (context, state) => AdminDashboardScreen(
+          initialTab: state.uri.queryParameters['tab'],
+          initialSubtab: state.uri.queryParameters['subtab'],
+        ),
       ),
 
       GoRoute(
         path: '/admin/dashboard',
-        builder: (context, state) => const AdminDashboardScreen(),
+        builder: (context, state) => AdminDashboardScreen(
+          initialTab: state.uri.queryParameters['tab'],
+          initialSubtab: state.uri.queryParameters['subtab'],
+        ),
       ),
 
       GoRoute(

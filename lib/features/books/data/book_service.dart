@@ -8,6 +8,7 @@ import 'local/book_local_store.dart';
 import '../../admin/data/admin_service.dart';
 import '../../admin/data/audit_service.dart';
 import 'book_model.dart';
+import 'demo_book_seed_service.dart';
 
 class BookService {
   final FirebaseFirestore? _customFirestore;
@@ -128,6 +129,11 @@ class BookService {
   }
 
   List<BookUnit> _getSeedUnits({required String grade, required String subject}) {
+    final demoUnits = DemoBookSeedService.getDemoUnits(grade: grade, subject: subject);
+    if (demoUnits.isNotEmpty) {
+      return demoUnits;
+    }
+
     final canonSubject = EduRiseSubjects.canonicalize(subject);
     final normGrade = grade.isNotEmpty ? (grade.startsWith('Grade ') ? grade : 'Grade $grade') : 'Grade 12';
     final gradePrefix = normGrade.replaceAll(RegExp(r'[^0-9]'), '');

@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import '../data/book_model.dart';
 import '../data/book_service.dart';
 import '../data/book_upload_item.dart';
+import '../../../core/theme/app_colors.dart';
 
 class AdminBookUploadScreen extends StatefulWidget {
   const AdminBookUploadScreen({super.key});
@@ -18,7 +19,7 @@ class AdminBookUploadScreen extends StatefulWidget {
 
 class _AdminBookUploadScreenState extends State<AdminBookUploadScreen> {
   final BookService _bookService = BookService();
-  final FirebaseStorage _storage = FirebaseStorage.instance;
+  FirebaseStorage get _storage => FirebaseStorage.instance;
 
   String? selectedGrade;
   String? selectedSubject;
@@ -400,7 +401,7 @@ class _AdminBookUploadScreenState extends State<AdminBookUploadScreen> {
     } else if (Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
     } else {
-      context.go('/admin/dashboard');
+      context.go('/admin/dashboard?tab=content&subtab=books');
     }
   }
 
@@ -410,6 +411,7 @@ class _AdminBookUploadScreenState extends State<AdminBookUploadScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.eduColors;
     final hasUnits = _uploadQueue.isNotEmpty;
 
     return PopScope(
@@ -419,6 +421,7 @@ class _AdminBookUploadScreenState extends State<AdminBookUploadScreen> {
         _safeBack();
       },
       child: Scaffold(
+        backgroundColor: colors.scaffoldBackground,
         appBar: AppBar(
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_rounded),
@@ -431,16 +434,16 @@ class _AdminBookUploadScreenState extends State<AdminBookUploadScreen> {
           child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
-            const Text(
+            Text(
               'Book Library',
-              style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+              style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: colors.textPrimary),
             ),
 
             const SizedBox(height: 6),
 
             Text(
               'Prepare multiple units and submit them together.',
-              style: TextStyle(color: Colors.grey.shade600),
+              style: TextStyle(color: colors.textSecondary),
             ),
 
             const SizedBox(height: 24),
@@ -502,6 +505,9 @@ class _AdminBookUploadScreenState extends State<AdminBookUploadScreen> {
                 ),
 
                 OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(0, 40),
+                  ),
                   onPressed: _addUnit,
                   icon: const Icon(Icons.add),
                   label: const Text('Add Unit'),
@@ -518,23 +524,24 @@ class _AdminBookUploadScreenState extends State<AdminBookUploadScreen> {
               Container(
                 padding: const EdgeInsets.all(28),
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade50,
+                  color: colors.surfaceSubtle,
                   borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: Colors.grey.shade200),
+                  border: Border.all(color: colors.border),
                 ),
-                child: const Column(
+                child: Column(
                   children: [
-                    Icon(Icons.picture_as_pdf_outlined, size: 48),
-                    SizedBox(height: 12),
+                    Icon(Icons.picture_as_pdf_outlined, size: 48, color: colors.primary),
+                    const SizedBox(height: 12),
                     Text(
                       'No units added yet.',
-                      style: TextStyle(fontWeight: FontWeight.w600),
+                      style: TextStyle(fontWeight: FontWeight.w600, color: colors.textPrimary),
                     ),
-                    SizedBox(height: 5),
+                    const SizedBox(height: 5),
                     Text(
                       'Select a grade and subject, '
                       'then start adding your PDFs.',
                       textAlign: TextAlign.center,
+                      style: TextStyle(color: colors.textSecondary),
                     ),
                   ],
                 ),
@@ -553,9 +560,9 @@ class _AdminBookUploadScreenState extends State<AdminBookUploadScreen> {
               return Container(
                 margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: colors.cardBackground,
                   borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: Colors.grey.shade200),
+                  border: Border.all(color: colors.border),
                   boxShadow: [
                     BoxShadow(
                       // ignore: deprecated_member_use
@@ -666,8 +673,9 @@ class _AdminBookUploadScreenState extends State<AdminBookUploadScreen> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade50,
+                  color: colors.surfaceSubtle,
                   borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: colors.border),
                 ),
                 child: Row(
                   children: [

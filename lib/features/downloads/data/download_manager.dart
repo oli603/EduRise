@@ -399,6 +399,7 @@ class DownloadManager {
       grade: grade,
       stream: stream,
       subject: subject,
+      examYear: examYear,
       uid: uid,
     );
   }
@@ -479,6 +480,7 @@ class DownloadManager {
 
     try {
       int completed = 0;
+      int successfulDownloads = 0;
       final yearStr = year.toString();
       final canonicalStream = stream.trim().toLowerCase().contains('social') ? 'social' : 'natural';
 
@@ -494,6 +496,7 @@ class DownloadManager {
             stream: canonicalStream,
             uid: targetUid,
           );
+          successfulDownloads++;
         } catch (e) {
           debugPrint('Download past exam warning for $subject: $e');
         }
@@ -501,6 +504,9 @@ class DownloadManager {
         _userDownloadProgress.putIfAbsent(targetUid, () => {})[batchKey] =
             completed / (subjects.isNotEmpty ? subjects.length : 1);
         _statusUpdateController.add(batchKey);
+      }
+      if (successfulDownloads == 0 && subjects.isNotEmpty) {
+        throw Exception('No entrance exams could be downloaded or saved for $yearStr $stream.');
       }
       _setState(batchKey, PackageDownloadState.downloaded, progress: 1.0, uid: targetUid);
     } catch (e) {
@@ -710,10 +716,17 @@ class DownloadManager {
     required String grade,
     required String stream,
     required String subject,
+    dynamic examYear,
     String? uid,
   }) async {
     final targetUid = _resolveUid(uid);
-    final batchPackageId = getSubjectBatchPackageId(
+    final batchPackageId = getPracticeSubjectBatchKey(
+      grade: grade,
+      stream: stream,
+      subject: subject,
+      examYear: examYear,
+    );
+    final legacyBatchId = getSubjectBatchPackageId(
       grade: grade,
       stream: stream,
       subject: subject,
@@ -721,6 +734,7 @@ class DownloadManager {
 
     final capturedEpoch = SessionManager.sessionEpoch;
     _setState(batchPackageId, PackageDownloadState.downloading, progress: 0.05, uid: targetUid);
+    _setState(legacyBatchId, PackageDownloadState.downloading, progress: 0.05, uid: targetUid);
 
     try {
       final allQuestions = await _questionService.getPublishedQuestions(
@@ -740,7 +754,9 @@ class DownloadManager {
       }
 
       _userDownloadProgress.putIfAbsent(targetUid, () => {})[batchPackageId] = 0.5;
+      _userDownloadProgress.putIfAbsent(targetUid, () => {})[legacyBatchId] = 0.5;
       _statusUpdateController.add(batchPackageId);
+      _statusUpdateController.add(legacyBatchId);
 
       await _questionStore.saveQuestions(allQuestions);
 
@@ -761,8 +777,10 @@ class DownloadManager {
         final unitQIds = entry.value;
         final unitPkgId = getPracticePackageId(
           grade: grade,
+          stream: stream,
           subject: subject,
           unitNumber: unitNum,
+          examYear: examYear,
         );
 
         final unitRecord = DownloadPackageRecord(
@@ -812,8 +830,10 @@ class DownloadManager {
 
       await _packageStore.savePackage(batchRecord, uid: targetUid);
       _setState(batchPackageId, PackageDownloadState.downloaded, progress: 1.0, uid: targetUid);
+      _setState(legacyBatchId, PackageDownloadState.downloaded, progress: 1.0, uid: targetUid);
     } catch (e) {
       _setState(batchPackageId, PackageDownloadState.failed, uid: targetUid);
+      _setState(legacyBatchId, PackageDownloadState.failed, uid: targetUid);
       rethrow;
     }
   }

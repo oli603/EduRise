@@ -1,5 +1,6 @@
 import 'package:edurise/features/admin/presentation/import_past_exams_screen.dart';
 import 'package:edurise/features/admin/presentation/import_practice_questions_screen.dart';
+import 'package:edurise/features/books/presentation/admin_book_upload_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -88,6 +89,55 @@ void main() {
       expect(find.text('✓ Complete'), findsOneWidget);
       expect(find.text('⚠ Need review'), findsOneWidget);
       expect(find.text('✕ Invalid'), findsOneWidget);
+    });
+
+    testWidgets('renders past exam import with full-width production button theme', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(
+            outlinedButtonTheme: OutlinedButtonThemeData(
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 52),
+              ),
+            ),
+          ),
+          home: const ImportPastExamsScreen(),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      expect(find.text('Step 4 — Import'), findsOneWidget);
+      expect(find.text('Cancel'), findsOneWidget);
+      expect(find.text('🚀 IMPORT ALL EXAMS'), findsOneWidget);
+    });
+  });
+
+  group('AdminBookUploadScreen Widget Tests', () {
+    testWidgets('renders book upload controls with full-width production button theme without overflow', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(
+            outlinedButtonTheme: OutlinedButtonThemeData(
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 52),
+              ),
+            ),
+          ),
+          home: const AdminBookUploadScreen(),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      expect(find.text('Upload Book Units'), findsOneWidget);
+      expect(find.text('Book Library'), findsOneWidget);
+      expect(find.text('Add Unit'), findsOneWidget);
+      expect(find.text('No units added yet.'), findsOneWidget);
     });
   });
 }

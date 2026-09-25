@@ -280,7 +280,7 @@ class _ImportPastExamsScreenState extends State<ImportPastExamsScreen> {
     } else if (Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
     } else {
-      context.go('/admin/dashboard');
+      context.go('/admin/dashboard?tab=content&subtab=past_exams');
     }
   }
 
@@ -992,6 +992,9 @@ class _ImportPastExamsScreenState extends State<ImportPastExamsScreen> {
         Row(
           children: [
             OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(0, 44),
+              ),
               onPressed: _isImporting ? null : () => Navigator.pop(context),
               child: const Text('Cancel'),
             ),

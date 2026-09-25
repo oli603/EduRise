@@ -241,6 +241,9 @@ class PastExam {
     required this.questions,
   });
 
+  String get title => '$year $subject Entrance Exam${round != null && round!.isNotEmpty ? ' ($round)' : ''}';
+  int get questionCount => questions.length;
+
   Map<String, dynamic> toMap() {
     return {
       'id': id,

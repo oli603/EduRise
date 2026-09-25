@@ -23,9 +23,19 @@ import '../data/question_package_service.dart';
 import '../../payment/data/models/payment_submission.dart';
 import '../../payment/data/payment_admin_service.dart';
 import '../../coach/data/coach_service.dart';
+import '../../books/data/demo_book_seed_service.dart';
+import '../../past_entrance_exams/data/past_exam_model.dart';
+import '../../past_entrance_exams/data/past_exam_service.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
-  const AdminDashboardScreen({super.key});
+  final String? initialTab;
+  final String? initialSubtab;
+
+  const AdminDashboardScreen({
+    super.key,
+    this.initialTab,
+    this.initialSubtab,
+  });
 
   @override
   State<AdminDashboardScreen> createState() => _AdminDashboardScreenState();
@@ -39,6 +49,20 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialTab != null) {
+      final t = widget.initialTab!.toLowerCase().replaceAll('-', '_');
+      if (t == 'content') {
+        _selectedTabIndex = 3;
+      } else if (t == 'audit_logs' || t == 'audit' || t == 'auditlogs') {
+        _selectedTabIndex = 8;
+      } else if (t == 'reports' || t == 'question_reports') {
+        _selectedTabIndex = 4;
+      } else if (t == 'students') {
+        _selectedTabIndex = 1;
+      } else if (t == 'payments') {
+        _selectedTabIndex = 2;
+      }
+    }
     _checkRole();
   }
 
@@ -131,7 +155,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           ),
           const _StudentsView(),
           const _PaymentsView(),
-          const _ContentView(),
+          _ContentView(initialSubtab: widget.initialSubtab),
           const _QuestionReportsView(),
           const _MonitoringView(),
           const _AnnouncementsView(),
@@ -1324,7 +1348,8 @@ class _PaymentReviewSheetState extends State<_PaymentReviewSheet> {
 // ============================================================================
 
 class _ContentView extends StatefulWidget {
-  const _ContentView();
+  final String? initialSubtab;
+  const _ContentView({this.initialSubtab});
 
   @override
   State<_ContentView> createState() => _ContentViewState();
@@ -1336,7 +1361,18 @@ class _ContentViewState extends State<_ContentView> with SingleTickerProviderSta
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    int initialIndex = 0;
+    if (widget.initialSubtab != null) {
+      final s = widget.initialSubtab!.toLowerCase().replaceAll('-', '_');
+      if (s == 'packages' || s == 'package') {
+        initialIndex = 1;
+      } else if (s == 'books' || s == 'book') {
+        initialIndex = 2;
+      } else if (s == 'past_exams' || s == 'pastexams' || s == 'exams' || s == 'past_exam') {
+        initialIndex = 3;
+      }
+    }
+    _tabController = TabController(length: 4, vsync: this, initialIndex: initialIndex);
   }
 
   @override
@@ -2007,8 +2043,32 @@ class _ContentBooksTabState extends State<_ContentBooksTab> {
     _fetch();
   }
 
+  Future<void> _seedDemoBooks() async {
+    setState(() => _isLoading = true);
+    final count = await DemoBookSeedService().seedDemoBooks();
+    await _fetch();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Successfully seeded $count demo book units across Grades 9–11!')),
+      );
+    }
+  }
+
+  Future<void> _resetDemoBooks() async {
+    setState(() => _isLoading = true);
+    final count = await DemoBookSeedService().removeDemoBooks();
+    await _fetch();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Removed $count demo book units.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final colors = context.eduColors;
+
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
@@ -2018,82 +2078,489 @@ class _ContentBooksTabState extends State<_ContentBooksTab> {
         icon: const Icon(Icons.upload_file),
         label: const Text('Upload Unit'),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _units.isEmpty
-              ? const Center(child: Text('No book units found in library.'))
-              : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
-                  itemCount: _units.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 10),
-                  itemBuilder: (context, index) {
-                    final u = _units[index];
-                    return Card(
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: const BorderSide(color: AppColors.border)),
-                      child: ListTile(
-                        leading: CircleAvatar(child: Text('${u.unitNumber}')),
-                        title: Text('Unit ${u.unitNumber}: ${u.unitName}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Text('${u.grade} • ${u.subject}'),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete_outline, color: AppColors.error),
-                          onPressed: () => _deleteUnit(u.id),
-                        ),
-                      ),
-                    );
-                  },
+      body: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: colors.cardBackground,
+              border: Border(bottom: BorderSide(color: colors.border)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${_units.length} Book Units in Library',
+                    style: TextStyle(fontWeight: FontWeight.bold, color: colors.textPrimary),
+                  ),
                 ),
+                PopupMenuButton<String>(
+                  tooltip: 'Demo Content Options',
+                  icon: const Icon(Icons.more_vert_rounded),
+                  onSelected: (action) {
+                    if (action == 'seed') {
+                      _seedDemoBooks();
+                    } else if (action == 'reset') {
+                      _resetDemoBooks();
+                    }
+                  },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(
+                      value: 'seed',
+                      child: Row(
+                        children: [
+                          Icon(Icons.auto_stories_rounded, size: 18, color: AppColors.primary),
+                          SizedBox(width: 8),
+                          Text('Seed Demo Books (Grades 9–11)'),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'reset',
+                      child: Row(
+                        children: [
+                          Icon(Icons.delete_sweep_rounded, size: 18, color: AppColors.error),
+                          SizedBox(width: 8),
+                          Text('Remove Demo Books'),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _units.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.menu_book_rounded, size: 48, color: AppColors.primary),
+                              const SizedBox(height: 16),
+                              Text(
+                                'No book units found in library',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: colors.textPrimary),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Upload a unit PDF or seed curriculum-accurate demo books for testing.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: colors.textSecondary, fontSize: 13),
+                              ),
+                              const SizedBox(height: 16),
+                              Wrap(
+                                spacing: 10,
+                                runSpacing: 10,
+                                alignment: WrapAlignment.center,
+                                children: [
+                                  FilledButton.icon(
+                                    onPressed: () async {
+                                      await context.push('/admin/books/upload');
+                                      _fetch();
+                                    },
+                                    icon: const Icon(Icons.upload_file),
+                                    label: const Text('Upload Unit'),
+                                  ),
+                                  OutlinedButton.icon(
+                                    onPressed: _seedDemoBooks,
+                                    style: OutlinedButton.styleFrom(minimumSize: const Size(0, 40)),
+                                    icon: const Icon(Icons.auto_stories_rounded),
+                                    label: const Text('Seed Demo Books'),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
+                        itemCount: _units.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 10),
+                        itemBuilder: (context, index) {
+                          final u = _units[index];
+                          return Card(
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              side: BorderSide(color: colors.border),
+                            ),
+                            child: ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: AppColors.primary.withValues(alpha: 0.12),
+                                child: Text('${u.unitNumber}', style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary)),
+                              ),
+                              title: Text('Unit ${u.unitNumber}: ${u.unitName}', style: TextStyle(fontWeight: FontWeight.bold, color: colors.textPrimary)),
+                              subtitle: Text('${u.grade} • ${u.subject}', style: TextStyle(color: colors.textSecondary)),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.delete_outline, color: AppColors.error),
+                                onPressed: () => _deleteUnit(u.id),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+          ),
+        ],
+      ),
     );
   }
 }
 
-class _ContentPastExamsTab extends StatelessWidget {
+class _ContentPastExamsTab extends StatefulWidget {
   const _ContentPastExamsTab();
 
   @override
+  State<_ContentPastExamsTab> createState() => _ContentPastExamsTabState();
+}
+
+class _ContentPastExamsTabState extends State<_ContentPastExamsTab> {
+  final PastExamService _pastExamService = PastExamService();
+  List<PastExam> _exams = [];
+  bool _isLoading = true;
+  String _selectedYear = 'all';
+  String _selectedStream = 'all';
+  String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _fetch();
+  }
+
+  Future<void> _fetch() async {
+    setState(() => _isLoading = true);
+    try {
+      final list = await _pastExamService.getAllPastExams();
+      if (mounted) {
+        setState(() {
+          _exams = list;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching past entrance exams in admin: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _deleteExam(PastExam exam) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Delete Entrance Exam?'),
+        content: Text('Are you sure you want to delete ${exam.title}? This action cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    await _pastExamService.deletePastExam(exam.id);
+    _fetch();
+  }
+
+  List<PastExam> get _filteredExams {
+    return _exams.where((e) {
+      final matchesYear = _selectedYear == 'all' || e.year.toString() == _selectedYear;
+      final matchesStream = _selectedStream == 'all' ||
+          e.stream.toLowerCase().contains(_selectedStream.toLowerCase());
+      final matchesSearch = _searchQuery.isEmpty ||
+          e.title.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+          e.subject.toLowerCase().contains(_searchQuery.toLowerCase());
+      return matchesYear && matchesStream && matchesSearch;
+    }).toList();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final colors = context.eduColors;
+    final filtered = _filteredExams;
+
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push('/admin/past-exams/import'),
+        onPressed: () async {
+          await context.push('/admin/past-exams/import');
+          _fetch();
+        },
         icon: const Icon(Icons.upload_file_rounded),
         label: const Text('Bulk Import Exams'),
       ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.history_edu_rounded, size: 54, color: AppColors.primary),
-              const SizedBox(height: 16),
-              const Text('Past Entrance Exams', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              const Text(
-                'Manage past entrance exams, question sets, and year configurations.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 20),
-              Wrap(
-                spacing: 12,
-                runSpacing: 10,
-                alignment: WrapAlignment.center,
-                children: [
-                  FilledButton.icon(
-                    onPressed: () => context.push('/admin/past-exams/upload'),
-                    icon: const Icon(Icons.add),
-                    label: const Text('Upload Exam (Manual)'),
+      body: Column(
+        children: [
+          // Filter & action bar
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: colors.cardBackground,
+              border: Border(bottom: BorderSide(color: colors.border)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        value: _selectedYear,
+                        decoration: InputDecoration(
+                          labelText: 'Exam Year',
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                          isDense: true,
+                        ),
+                        items: const [
+                          DropdownMenuItem(value: 'all', child: Text('All Years')),
+                          DropdownMenuItem(value: '2017', child: Text('2017 E.C.')),
+                          DropdownMenuItem(value: '2016', child: Text('2016 E.C.')),
+                          DropdownMenuItem(value: '2015', child: Text('2015 E.C.')),
+                          DropdownMenuItem(value: '2014', child: Text('2014 E.C.')),
+                          DropdownMenuItem(value: '2013', child: Text('2013 E.C.')),
+                          DropdownMenuItem(value: '2012', child: Text('2012 E.C.')),
+                        ],
+                        onChanged: (v) {
+                          if (v != null) setState(() => _selectedYear = v);
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        value: _selectedStream,
+                        decoration: InputDecoration(
+                          labelText: 'Stream',
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                          isDense: true,
+                        ),
+                        items: const [
+                          DropdownMenuItem(value: 'all', child: Text('All Streams')),
+                          DropdownMenuItem(value: 'natural', child: Text('Natural')),
+                          DropdownMenuItem(value: 'social', child: Text('Social')),
+                        ],
+                        onChanged: (v) {
+                          if (v != null) setState(() => _selectedStream = v);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 38,
+                  child: TextField(
+                    decoration: InputDecoration(
+                      hintText: 'Search exams by subject or title...',
+                      prefixIcon: const Icon(Icons.search, size: 18),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      isDense: true,
+                    ),
+                    onChanged: (v) => setState(() => _searchQuery = v),
                   ),
-                  OutlinedButton.icon(
-                    onPressed: () => context.push('/admin/past-exams/import'),
-                    icon: const Icon(Icons.upload_file_outlined),
-                    label: const Text('Bulk Import Exams'),
-                  ),
-                ],
-              ),
-            ],
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        await context.push('/admin/past-exams/upload');
+                        _fetch();
+                      },
+                      style: OutlinedButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        minimumSize: const Size(0, 36),
+                      ),
+                      icon: const Icon(Icons.add, size: 16),
+                      label: const Text('Upload Exam (Manual)'),
+                    ),
+                    FilledButton.icon(
+                      onPressed: () async {
+                        await context.push('/admin/past-exams/import');
+                        _fetch();
+                      },
+                      style: FilledButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        minimumSize: const Size(0, 36),
+                      ),
+                      icon: const Icon(Icons.upload_file_outlined, size: 16),
+                      label: const Text('Bulk Import Exams'),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.refresh_rounded),
+                      tooltip: 'Refresh',
+                      onPressed: _fetch,
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-        ),
+
+          // Exam list
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : filtered.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.history_edu_rounded, size: 48, color: AppColors.primary),
+                              const SizedBox(height: 16),
+                              Text(
+                                'No past entrance exams found',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  color: colors.textPrimary,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Import past exams via JSON or upload an exam manually to get started.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: colors.textSecondary, fontSize: 13),
+                              ),
+                              const SizedBox(height: 16),
+                              FilledButton.icon(
+                                onPressed: () async {
+                                  await context.push('/admin/past-exams/import');
+                                  _fetch();
+                                },
+                                icon: const Icon(Icons.upload_file_rounded),
+                                label: const Text('Bulk Import Exams'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
+                        itemCount: filtered.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 10),
+                        itemBuilder: (context, index) {
+                          final exam = filtered[index];
+                          final isNatural = exam.stream.toLowerCase().contains('natural');
+
+                          return Card(
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              side: BorderSide(color: colors.border),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(14),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: (isNatural ? Colors.blue : Colors.orange).withValues(alpha: 0.1),
+                                          borderRadius: BorderRadius.circular(6),
+                                          border: Border.all(
+                                            color: (isNatural ? Colors.blue : Colors.orange).withValues(alpha: 0.3),
+                                          ),
+                                        ),
+                                        child: Text(
+                                          exam.stream.toUpperCase(),
+                                          style: TextStyle(
+                                            color: isNatural ? Colors.blue.shade700 : Colors.orange.shade700,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 10,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.primary.withValues(alpha: 0.1),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          '${exam.year} E.C.',
+                                          style: const TextStyle(
+                                            color: AppColors.primary,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 10,
+                                          ),
+                                        ),
+                                      ),
+                                      const Spacer(),
+                                      IconButton(
+                                        icon: const Icon(Icons.delete_outline, color: AppColors.error, size: 20),
+                                        tooltip: 'Delete Exam',
+                                        onPressed: () => _deleteExam(exam),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    exam.title,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15,
+                                      color: colors.textPrimary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '${exam.subject} • ${exam.questionCount} Questions • ${exam.durationMinutes} min',
+                                    style: TextStyle(color: colors.textSecondary, fontSize: 13),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    children: [
+                                      OutlinedButton.icon(
+                                        onPressed: () => context.push(
+                                          '/admin/past-exams/questions',
+                                          extra: {
+                                            'year': exam.year.toString(),
+                                            'stream': exam.stream,
+                                            'subject': exam.subject,
+                                            'duration': exam.durationMinutes.toString(),
+                                          },
+                                        ),
+                                        icon: const Icon(Icons.edit_note_rounded, size: 16),
+                                        label: const Text('View / Edit Questions'),
+                                        style: OutlinedButton.styleFrom(
+                                          visualDensity: VisualDensity.compact,
+                                          minimumSize: const Size(0, 36),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+          ),
+        ],
       ),
     );
   }
@@ -2709,27 +3176,29 @@ class _AuditLogsViewState extends State<_AuditLogsView> {
                 ],
               ),
               const SizedBox(height: 8),
-              Row(
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   if (_selectedLogIds.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: FilledButton.icon(
-                        onPressed: _deleteSelected,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.error,
-                          visualDensity: VisualDensity.compact,
-                        ),
-                        icon: const Icon(Icons.delete_outline_rounded, size: 16),
-                        label: Text('Delete Selected (${_selectedLogIds.length})'),
+                    FilledButton.icon(
+                      onPressed: _deleteSelected,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.error,
+                        visualDensity: VisualDensity.compact,
+                        minimumSize: const Size(0, 36),
                       ),
+                      icon: const Icon(Icons.delete_outline_rounded, size: 16),
+                      label: Text('Delete Selected (${_selectedLogIds.length})'),
                     ),
-                  const Spacer(),
                   TextButton.icon(
                     onPressed: _deleteAll,
                     style: TextButton.styleFrom(
                       foregroundColor: AppColors.error,
                       visualDensity: VisualDensity.compact,
+                      minimumSize: const Size(0, 36),
                     ),
                     icon: const Icon(Icons.delete_sweep_rounded, size: 18),
                     label: const Text('Delete All', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -2797,20 +3266,25 @@ class _AuditLogsViewState extends State<_AuditLogsView> {
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.primary.withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(6),
-                                      ),
-                                      child: Text(
-                                        log.action.replaceAll('_', ' ').toUpperCase(),
-                                        style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 10),
+                                    Flexible(
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.primary.withValues(alpha: 0.1),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          log.action.replaceAll('_', ' ').toUpperCase(),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 10),
+                                        ),
                                       ),
                                     ),
+                                    const SizedBox(width: 8),
                                     Text(
                                       log.timestamp?.toString().substring(0, 16) ?? '',
-                                      style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                                      style: TextStyle(fontSize: 11, color: context.eduColors.textSecondary),
                                     ),
                                   ],
                                 ),
@@ -3457,9 +3931,9 @@ class _QuestionReportsViewState extends State<_QuestionReportsView> {
             padding: const EdgeInsets.all(32),
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: context.eduColors.cardBackground,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.border),
+              border: Border.all(color: context.eduColors.border),
             ),
             child: Column(
               children: [
@@ -3469,7 +3943,7 @@ class _QuestionReportsViewState extends State<_QuestionReportsView> {
                   _activeTab == 'questions'
                       ? 'No question reports found for this filter.'
                       : 'No bug reports found for this filter.',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+                  style: TextStyle(fontWeight: FontWeight.bold, color: context.eduColors.textPrimary),
                 ),
               ],
             ),
@@ -3500,9 +3974,9 @@ class _QuestionReportsViewState extends State<_QuestionReportsView> {
                 margin: const EdgeInsets.only(bottom: 12),
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: context.eduColors.cardBackground,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: AppColors.border),
+                  border: Border.all(color: context.eduColors.border),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -3523,27 +3997,27 @@ class _QuestionReportsViewState extends State<_QuestionReportsView> {
                         const SizedBox(width: 8),
                         Text(
                           category,
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: context.eduColors.textPrimary),
                         ),
                         const Spacer(),
                         Text(
                           '$count student report${count == 1 ? '' : 's'}',
-                          style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.bold),
+                          style: TextStyle(fontSize: 11, color: context.eduColors.textSecondary, fontWeight: FontWeight.bold),
                         ),
                       ],
                     ),
                     if (feedbackList.isNotEmpty) ...[
                       const SizedBox(height: 8),
-                      const Text(
+                      Text(
                         'Student Notes:',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: context.eduColors.textPrimary),
                       ),
                       const SizedBox(height: 4),
                       ...feedbackList.take(3).map((f) => Padding(
                             padding: const EdgeInsets.only(bottom: 2),
                             child: Text(
                               '• "$f"',
-                              style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+                              style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: context.eduColors.textSecondary),
                             ),
                           )),
                     ],
@@ -3582,9 +4056,9 @@ class _QuestionReportsViewState extends State<_QuestionReportsView> {
               margin: const EdgeInsets.only(bottom: 12),
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: context.eduColors.cardBackground,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppColors.border),
+                border: Border.all(color: context.eduColors.border),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -3605,25 +4079,25 @@ class _QuestionReportsViewState extends State<_QuestionReportsView> {
                       const SizedBox(width: 8),
                       Text(
                         'Reason: ${reason.replaceAll('_', ' ')}',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: context.eduColors.textPrimary),
                       ),
                       const Spacer(),
                       Text(
                         '$count reports ($distinct students)',
-                        style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.bold),
+                        style: TextStyle(fontSize: 11, color: context.eduColors.textSecondary, fontWeight: FontWeight.bold),
                       ),
                     ],
                   ),
                   const SizedBox(height: 8),
                   Text(
                     'Question ID: ${rMap['question_id']} • Subject: ${rMap['subject'] ?? 'N/A'} • Type: ${rMap['question_type']}',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                    style: TextStyle(fontSize: 12, color: context.eduColors.textSecondary),
                   ),
                   if (rMap['details'] != null && rMap['details'].toString().isNotEmpty) ...[
                     const SizedBox(height: 6),
                     Text(
                       'Details: "${rMap['details']}"',
-                      style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+                      style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: context.eduColors.textSecondary),
                     ),
                   ],
                   if (rMap['admin_notes'] != null && rMap['admin_notes'].toString().isNotEmpty) ...[

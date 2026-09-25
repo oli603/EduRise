@@ -101,6 +101,49 @@ class PastExamService {
     });
   }
 
+  /// ADMIN — GET ALL PAST EXAMS (with offline / mock fallback)
+  Future<List<PastExam>> getAllPastExams() async {
+    if (_injectedExams.isNotEmpty) {
+      final seen = <String>{};
+      final list = <PastExam>[];
+      for (final e in _injectedExams.values) {
+        if (seen.add(e.id)) list.add(e);
+      }
+      return list;
+    }
+
+    if (!_hasFirebase) {
+      return [
+        _generateSampleExam('past_exam_2017_natural_mathematics', year: '2017', stream: 'natural', subject: EduRiseSubjects.mathematics),
+        _generateSampleExam('past_exam_2017_natural_physics', year: '2017', stream: 'natural', subject: EduRiseSubjects.physics),
+        _generateSampleExam('past_exam_2016_social_economics', year: '2016', stream: 'social', subject: EduRiseSubjects.economics),
+        _generateSampleExam('past_exam_2016_natural_chemistry', year: '2016', stream: 'natural', subject: EduRiseSubjects.chemistry),
+        _generateSampleExam('past_exam_2015_natural_biology', year: '2015', stream: 'natural', subject: EduRiseSubjects.biology),
+      ];
+    }
+
+    try {
+      final snapshot = await _pastExams.get();
+      return snapshot.docs
+          .map((doc) => PastExam.fromMap(doc.id, doc.data()))
+          .toList();
+    } catch (e) {
+      debugPrint('Error getting all past exams: $e');
+      return [];
+    }
+  }
+
+  /// ADMIN — DELETE EXAM
+  Future<void> deletePastExam(String examId) async {
+    _injectedExams.remove(examId);
+    if (!_hasFirebase) return;
+    try {
+      await _pastExams.doc(examId).delete();
+    } catch (e) {
+      debugPrint('Error deleting past exam $examId: $e');
+    }
+  }
+
   static final Map<String, PastExam> _injectedExams = {};
 
   void injectMockExam(PastExam exam) {
